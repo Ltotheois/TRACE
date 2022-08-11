@@ -150,6 +150,14 @@ def measure_pressure_mean(device):
 	clean, mean = detect_outlier(pressures)
 	return(mean)
 
+def measure_pressure_wrapper(address):
+	try:
+		pressure_gauge_device = serial.Serial(port=address, **kwargs_serial_gauge)
+		pressure = measure_pressure(pressure_gauge_device)
+		return(pressure)
+	except Exception as E:
+		return(E)
+
 def set_pressure(c, gauge, inlet, outlet):
 	# Gauge does not respond on first query
 	try:

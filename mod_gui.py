@@ -178,6 +178,8 @@ class MainWindow(QMainWindow):
 		self.refillwindow = RefillWindow(self)
 		self.hoverwindow = HoverWindow(self)
 		self.hoverwindow.hide()
+		self.configwindow = ConfigWindow(self)
+		self.configwindow.hide()
 		self.logwindow = LogWindow(self)
 		
 		self.tabifyDockWidget(self.logwindow, self.queuewindow)
@@ -211,14 +213,22 @@ class MainWindow(QMainWindow):
 
 	@synchronized_d(locks["meas"])
 	def closeEvent(self, event):
-		self.hoverwindow.close()
+		
 		try:
 			ws.close()
+			
 			if self.plotwidget.shared_memory:
 				self.plotwidget.shared_memory.close()
 				self.plotwidget.meas_array = None
-		finally:
-			event.accept()
+		except:
+			pass
+		
+		self.logwindow.close()
+		self.queuewindow.close()
+		self.hoverwindow.close()
+		self.configwindow.close()
+		
+		event.accept()
 	
 	def dragEnterEvent(self, event):
 		if event.mimeData().hasUrls():
@@ -466,6 +476,7 @@ class MainWindow(QMainWindow):
 			"Shift+d": lambda: self.plotwidget.set_position("+"),
 			
 			"Shift+Q": lambda: self.config.__setitem__("plot_autoscale", True),
+			"Ctrl+k": lambda: ConsoleDialog.run(),
 		}
 
 
@@ -534,7 +545,7 @@ class MainWindow(QMainWindow):
 		self.signalclass.writelog.emit(output)
 
 	def createmenu(self):
-		menus = {label: self.menuBar().addMenu(f"&{label}") for label in ("Files", "View", "Plot", "Info")}
+		menus = {label: self.menuBar().addMenu(f"&{label}") for label in ("Files", "View", "Plot", "Actions", "Info")}
 		for menu in menus.values():
 			menu.setToolTipsVisible(True)
 
@@ -571,6 +582,7 @@ class MainWindow(QMainWindow):
 				None,
 				QQ(QAction, "layout_mpltoolbar", parent=self, text="&MPL Toolbar", shortcut="Shift+1", tooltip="Show or hide toolbar to edit or save the plot canvas", checkable=True),
 				QQ(QAction, parent=self, text="&Hover Window", shortcut="Shift+6", tooltip="Show the hover window", change=lambda x: self.hoverwindow.show() and self.hoverwindow.activateWindow()),
+				QQ(QAction, parent=self, text="&Config Window", shortcut="Shift+7", tooltip="Show the config window", change=lambda x: self.configwindow.show() and self.configwindow.activateWindow()),
 				toggleaction_queue,
 				toggleaction_log,
 				None,
@@ -582,6 +594,9 @@ class MainWindow(QMainWindow):
 				None,
 				QQ(QAction, "flag_automatic_draw", parent=self, text="&Automatic Draw", tooltip="Update canvas automatically when plot is updated, might be switched off if program is unresponsive", checkable = True),
 				QQ(QAction, parent=self, text="&Manual Draw", tooltip="Draw canvas manually", change=lambda x: self.plotwidget.manual_draw(), shortcut="Shift+Space"),
+			),
+			"Actions": (
+				QQ(QAction, parent=self, text="&Reconnect Experiment", tooltip="Reconnect the websocket to the experiment", change=lambda x: ws.start()),
 			),
 			"Info": (
 				QQ(QAction, parent=self, text="&Send Mail to Author", tooltip="Send a mail to the developer", change=lambda x: send_mail_to_author()),
@@ -1000,6 +1015,7 @@ class PlotWidget(QGroupBox):
 		except CustomError as E:
 			pass
 
+	@synchronized_d(locks["axs"])
 	def set_meas_data(self, standalone=True):
 		ax = self.ax
 		autoscale = mw.config["plot_autoscale"]
@@ -1015,8 +1031,12 @@ class PlotWidget(QGroupBox):
 
 		segs = np.array(((xs[:-1], xs[1:]), (ys[:-1], ys[1:]))).T
 		coll = matplotlib.collections.LineCollection(segs, colors=mw.config["color_meas"])
-		if self.plots["meas"]:
-			self.plots["meas"].remove()
+		
+		try:
+			if self.plots["meas"]:
+				self.plots["meas"].remove()
+		except ValueError:
+			pass
 		self.plots["meas"] = ax.add_collection(coll)
 
 		margin = mw.config["plot_ymargin"]
@@ -1030,7 +1050,7 @@ class PlotWidget(QGroupBox):
 			xmin, xmax = self.freqrange =  0, 10
 		ax.set_xlim(xmin, xmax)
 		
-		ticks = np.linspace(xmin,  xmax, mw.config["plot_ticks"])
+		ticks = np.linspace(xmin, xmax, mw.config["plot_ticks"])
 		if mw.config["plot_scientificticks"]:
 			ticklabels = [f"{x:.2e}".replace("e+00", "").rstrip("0").rstrip(".") for x in ticks]
 		else:
@@ -1097,6 +1117,13 @@ class PlotWidget(QGroupBox):
 
 class Websocket():
 	def __init__(self):
+		self.start()
+		
+	def start(self):
+		try:
+			self.close()
+		except Exception as E:
+			pass
 		self.websocket = websocket.WebSocketApp("ws://localhost:8112", on_message=self.on_message, on_error=self.on_error, on_close=self.on_close, on_open=self.on_open)
 		self.thread = threading.Thread(target=self.websocket.run_forever)
 		self.thread.start()
@@ -1116,7 +1143,7 @@ class Websocket():
 			shape = message["shape"]
 			time = message["time"]
 			mw.plotwidget.connect_shared_memory(name, size, shape)
-			mw.timeindicator.setText(f"Est. Time: {time} s")
+			mw.timeindicator.setText(f"Est. Time: {time:.0f} s")
 		
 		elif action == "queue":
 			queue = message["data"]
@@ -1181,23 +1208,17 @@ class Config(dict):
 		if not isinstance(keys, (tuple, list)):
 			keys = [keys]
 		for key in keys:
-			self.callbacks = self.callbacks.append({
-				"id":		0,
-				"key":		key,
-				"function":	function
-			}, ignore_index=True)
+			id = 0
+			df = self.callbacks
+			df.loc[len(df), ["id", "key", "function"]] = id, key, function
 
 	def register_widget(self, key, widget, function):
 		ids = set(self.callbacks["id"])
 		id = 1
 		while id in ids:
 			id += 1
-		self.callbacks = self.callbacks.append({
-			"id":		id,
-			"key":		key,
-			"widget":	widget,
-			"function":	function
-		}, ignore_index=True)
+		df = self.callbacks
+		df.loc[len(df), ["id", "key", "function", "widget"]] = id, key, function, widget
 		widget.destroyed.connect(lambda x, id=id: self.unregister_widget(id))
 
 	def unregister_widget(self, id):
@@ -1421,7 +1442,7 @@ class QBoolComboBox(QComboBox):
 		return(tmp)
 		
 	def currentText(self):
-		return self.currentIndex() == self.true_text
+		return super().currentText() == self.true_text
 
 	def setCurrentText(self, value):
 		if value:
@@ -1794,6 +1815,9 @@ class QueueWindow(EQDockWidget):
 		elif key == "Add batch":
 			raise NotImplementedError
 			# @Luis
+		
+		# @Luis: Command to set autophase
+		# @Luis: Maybe also option to measure x or magnitude
 	
 	def update_queue(self, queue):
 		self.listwidget.clear()
@@ -1843,6 +1867,7 @@ class GeneralWindow(MeasWidget):
 			"Project":				QQ(QLineEdit, "general_project"),
 			"Comment":				QQ(QLineEdit, "general_comment"),
 			"Notification":			QQ(QBoolComboBox, "general_sendnotification"),
+			"Notification Address":	QQ(QLineEdit, "general_notificationaddress"),
 			"DM Jump":				QQ(QDoubleSpinBox, "general_dmjump", range=(0, None)),
 			"DM Period":			QQ(QDoubleSpinBox, "general_dmperiod", range=(0, None)),
 		}
@@ -1931,6 +1956,115 @@ class HoverWindow(EQWidget):
 
 		parent.signalclass.writehover.connect(lambda text: self.log_area.setText(text))
 		layout.addWidget(self.log_area)
+
+class ConfigWindow(EQWidget):
+	def __init__(self, id, parent=None):
+		super().__init__(id, parent)
+		self.setWindowTitle("Config")
+
+		vbox = QVBoxLayout()
+		scrollarea = QScrollArea()
+		widget = QWidget()
+		layout = QGridLayout()
+
+		self.updating = True
+
+		scrollarea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+		scrollarea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+		scrollarea.setWidgetResizable(True)
+
+		tmp_layout = QHBoxLayout()
+		tmp_layout.addWidget(QQ(QPushButton, text="Save as default", change=lambda: mw.saveoptions()))
+		completer = QCompleter(mw.config.keys())
+		completer.setCaseSensitivity(Qt.CaseInsensitive)
+		tmp_layout.addWidget(QQ(QLineEdit, placeholder="Search", completer=completer, change=lambda x: self.search(x)))
+		tmp_layout.addStretch(1)
+
+		vbox.addLayout(tmp_layout)
+		self.widgets = {}
+
+		i = 1
+		for key, value in mw.config.items():
+			text = json.dumps(value) if isinstance(value, (dict, list, tuple)) else str(value)
+			tmp_input = QQ(QLineEdit, value=text, change=lambda text, key=key: self.set_value(key, text))
+			tmp_oklab = QQ(QLabel, text="Good")
+			tmp_label = QQ(QLabel, text=key)
+
+			self.widgets[key] = (tmp_input, tmp_oklab, tmp_label)
+			layout.addWidget(tmp_label, i+1, 0)
+			layout.addWidget(tmp_input, i+1, 1)
+			layout.addWidget(tmp_oklab, i+1, 2)
+			i += 1
+
+		layout.setRowStretch(i+1, 1)
+
+		widget.setLayout(layout)
+		scrollarea.setWidget(widget)
+		vbox.addWidget(scrollarea)
+
+		self.setLayout(vbox)
+
+		self.updating = False
+		self.timer = None
+
+	def show(self, *args, **kwargs):
+		self.timer = QTimer(self)
+		self.timer.timeout.connect(self.get_values)
+		self.timer.start(200)
+		return(super().show(*args, **kwargs))
+
+	def search(self, text):
+		for key, value in self.widgets.items():
+			if text.lower() in key or text.lower() in value[0].text():
+				hidden = False
+			else:
+				hidden = True
+			value[0].setHidden(hidden)
+			value[1].setHidden(hidden)
+			value[2].setHidden(hidden)
+
+	def get_values(self):
+		self.updating = True
+		for key, (input, oklabel, label) in self.widgets.items():
+			value = mw.config[key]
+			if input.hasFocus() or self.widgets[key][1].text() == "Bad":
+				continue
+			if isinstance(value, (dict, list, tuple)):
+				input.setText(json.dumps(value))
+			else:
+				input.setText(str(value))
+		self.updating = False
+
+	def set_value(self, key, value):
+		if self.updating:
+			return
+		converter = config_specs.get(key)
+		if converter:
+			converter = converter[1]
+		input, oklab, label = self.widgets[key]
+
+		try:
+			if converter is None:
+				pass
+			elif converter in (dict, list, tuple):
+				value = json.loads(value)
+			elif converter == bool:
+				value = True if value in ["True", "1"] else False
+			else:
+				value = converter(value)
+			mw.config[key] = value
+			oklab.setText("Good")
+		except Exception as E:
+			oklab.setText("Bad")
+
+
+	def closeEvent(self, *args, **kwargs):
+		if self.timer:
+			self.timer.stop()
+			self.timer = None
+		return super().closeEvent(*args, **kwargs)
+
+
 
 class LogWindow(EQDockWidget):
 	def __init__(self, parent):
@@ -2132,7 +2266,7 @@ class FileWindow(EQWidget):
 
 	@synchronized_d(locks["axs"])
 	def hide_file(self, type, file):
-		hidden = main.config[f"files_{type}"][file].get("hidden", False)
+		hidden = mw.config[f"files_{type}"][file].get("hidden", False)
 		hidden = not hidden
 		mw.config[f"files_{type}"][file]["hidden"] = hidden
 
@@ -2183,6 +2317,104 @@ class CreditsWindow(EQWidget):
 		layout = QVBoxLayout()
 		layout.addWidget(QQ(QLabel, text=CREDITSSTRING, align=Qt.AlignCenter, wordwrap=True, minHeight=300, minWidth=500))
 		self.setLayout(layout)
+
+
+class ConsoleDialog(QDialog):
+	def __init__(self):
+		super().__init__()
+		QShortcut("Esc", self).activated.connect(lambda: self.predone(0))
+
+		self.setWindowTitle(f"Command Line Dialog")
+		self.resize(mw.config["commandlinedialog_width"], mw.config["commandlinedialog_height"])
+
+		self.tabs = QTabWidget()
+		self.tabs.setTabsClosable(True)
+		self.tabs.setMovable(True)
+		self.tabs.setDocumentMode(True)
+
+		initial_values = mw.config["commandlinedialog_commands"]
+		if initial_values:
+			for title, command in initial_values:
+				self.add_tab(title, command)
+		else:
+			self.add_tab()
+
+		self.tabs.tabCloseRequested.connect(self.close_tab)
+		self.tabs.tabBarDoubleClicked.connect(self.renameoradd_tab)
+		self.tabs.setCurrentIndex(mw.config["commandlinedialog_current"])
+
+		layout = QVBoxLayout()
+		self.setLayout(layout)
+
+		layout.addWidget(self.tabs)
+		buttons_layout = QHBoxLayout()
+		buttons_layout.addStretch()
+		buttons_layout.addWidget(QQ(QPushButton, text="Run", change=lambda x: self.predone(1), shortcut="Ctrl+Return"))
+		buttons_layout.addWidget(QQ(QPushButton, text="Cancel", change=lambda x: self.predone(0), shortcut="Esc"))
+		buttons_layout.addStretch()
+		layout.addLayout(buttons_layout)
+
+	def add_tab(self, title="Command", command=""):
+		textarea = QQ(QPlainTextEdit, value=command)
+		cursor = textarea.textCursor()
+		cursor.movePosition(QTextCursor.End)
+		textarea.setTextCursor(cursor)
+		self.tabs.addTab(textarea, title)
+
+	def close_tab(self, index):
+		tab = self.tabs.widget(index)
+		tab.deleteLater()
+		self.tabs.removeTab(index)
+		if self.tabs.count() == 0:
+			self.add_tab()
+
+	def renameoradd_tab(self, index):
+		if index == -1:
+			self.add_tab()
+		elif self.tabs.widget(index) != 0:
+			text, ok = QInputDialog().getText(self, "Tab Name","Enter the Tabs Name:")
+			if ok and text:
+				self.tabs.setTabText(index, text)
+
+	def predone(self, val):
+		commands = []
+		for i in range(self.tabs.count()):
+			tab = self.tabs.widget(i)
+			title = self.tabs.tabText(i)
+			command = tab.toPlainText()
+			commands.append((title, command))
+
+		mw.config["commandlinedialog_commands"] = commands
+		mw.config["commandlinedialog_current"] = self.tabs.currentIndex()
+
+		mw.config["commandlinedialog_width"] =	self.geometry().width()
+		mw.config["commandlinedialog_height"] =	self.geometry().height()
+		self.done(val)
+
+	def run(showdialog=True):
+		if showdialog:
+			dialog = ConsoleDialog()
+			dialog.exec_()
+			if dialog.result() != 1:
+				return
+
+		title, command = mw.config["commandlinedialog_commands"][mw.config["commandlinedialog_current"]]
+		if not command.strip():
+			return
+		message = []
+		old_stdout = sys.stdout
+		red_output = sys.stdout = io.StringIO()
+		try:
+			exec(command)
+		except Exception as E:
+			message.append(f"<span style='color:#eda711;'>WARNING</span>: Executing the code raised an error: {str(E)}")
+			raise
+		finally:
+			sys.stdout = old_stdout
+
+		message.append("\n".join([f">>> {line}" for line in command.split("\n")]))
+		message.append(red_output.getvalue())
+		mw.notification("\n".join(message))
 
 ##
 ## Global Functions
@@ -2356,8 +2588,9 @@ def symmetric_ticklabels(ticks):
 		if dec_a == dec_o:
 			tick_labels.append(f"{a:.4f}".rstrip("0").rstrip("."))
 		else:
-			min_dec = max(dec_a, dec_o)
-			tick_labels.append(f"{a:.4f}"[:-(4-min_dec)])
+			trailing_zeros = 4 - max(dec_a, dec_o)
+			tick = f"{a:.4f}"[:-trailing_zeros] if trailing_zeros else f"{a:.4f}"
+			tick_labels.append(tick)
 	return(tick_labels)
 
 def except_hook(cls, exception, traceback):
@@ -2399,6 +2632,11 @@ def rgbt_to_trgb(color):
 		color = f"#{color[-2:]}{color[1:-2]}"
 	return(color)
 
+def restart():
+	ws.close()
+	mw.saveoptions()
+	os.execv(sys.executable, [sys.executable, sys.argv[0]])
+
 ##
 ## Global Variables
 ##
@@ -2419,6 +2657,7 @@ config_specs = {
 	"general_project":						["", str],
 	"general_comment":						["", str],
 	"general_sendnotification":				[False, bool],
+	"general_notificationaddress":			["", str],
 	"general_dmjump":						[120, float],
 	"general_dmperiod":						[5, float],
 	
@@ -2473,7 +2712,7 @@ config_specs = {
 	"color_cat":							["#d91e6f", Color],
 	"color_cur":							["#71eb34", Color],
 	"color_fit":							["#bc20e3", Color],
-	"color_meas":							["#ff0000", Color],
+	"color_meas":							["#ff000099", Color],
 
 	"plot_dpi":								[100, float],
 	"plot_ymargin":							[0.1, float],
@@ -2505,6 +2744,11 @@ config_specs = {
 	"flag_showmainplotcontrols":			[True, bool],
 	"flag_showmainplotposition":			[True, bool],
 	"flag_logmaxrows":						[10000, int],
+
+	"commandlinedialog_width":				[500, int],
+	"commandlinedialog_height":				[250, int],
+	"commandlinedialog_commands":			[[], list],
+	"commandlinedialog_current":			[1, int],
 
 	"files_exp":							[{}, dict],
 	"files_cat":							[{}, dict],

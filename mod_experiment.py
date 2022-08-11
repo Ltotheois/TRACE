@@ -310,16 +310,16 @@ class Measurement(dict):
 				if rc < 1:
 					raise CustomError(rm)
 
-			if self.readpressure:
-				self["general_pressurestart"] = mod_pumpcell.measure_pressure_wrapper(self["refill_address"])
+			self.pressure_wrapper("general_pressurestart")
 			self["general_datestart"] = str(datetime.now())[:19]
 			
 			self.spectrum_loop()
-			self.save()
 			
 			self["general_dateend"] = str(datetime.now())[:19]
-			if self.readpressure:
-				self["general_pressureend"] = mod_pumpcell.measure_pressure_wrapper(self["refill_address"])
+			self.pressure_wrapper("general_pressureend")
+
+			
+			self.save()
 		
 		except Exception as E:
 			raise
@@ -343,8 +343,7 @@ class Measurement(dict):
 				pump_frequencies = [0]
 				pump_iterations = 1
 			
-			# @Luis: Think about iterations here
-			# Maybe change for loops to while loops -> allows to change iterations while running
+			# @Luis: Think about iterations here - Maybe change for loops to while loops -> allows to change iterations while running
 			point_iterations = self["lockin_iterations"]
 			
 			n_probe, n_pump = len(probe_frequencies), len(pump_frequencies)
@@ -394,6 +393,15 @@ class Measurement(dict):
 			if shm:
 				shm.close()
 				shm.unlink()
+
+	def pressure_wrapper(self, key):
+		if self.readpressure:
+			tmp = mod_pumpcell.measure_pressure_wrapper(self["refill_address"])
+			if isinstance(tmp, Exception):
+				server.send_all({"action": "error", "error": f"Could not read pressure. Error reads {tmp}."})
+				self[key] = None
+			else:
+				self[key] = tmp
 
 	def save(self):
 		directory = os.path.join(homefolder, f"../../measurements_data/{self.get('general_molecule', 'Unknown')}/{str(datetime.now())[:10]}")
