@@ -29,10 +29,10 @@ pressure_translation = {
 
 ## Default Values
 c =	{
-	"pressure_min"				:  6e-6,
-	"pressure_max"				:  8e-6,
-	"pressure_threshold"		:  8e-6,
-	"pressure_empty"			:  4.5e-6,
+	"pressure_min"				: 6e-6,
+	"pressure_max"				: 8e-6,
+	"pressure_threshold"		: 8e-6,
+	"pressure_empty"			: 4.5e-6,
 	"pressure_gauge_port"		: "COM2",
 	"valve_inlet_port"			: "COM4",
 	"valve_outlet_port"			: "COM5",
@@ -126,6 +126,9 @@ def close_valve(device):
 # True corresponds to open corresponds to 255
 # False corresponds to closed
 def get_state(device):
+	st = time.perf_counter()
+	while not device.in_waiting and time.perf_counter() - st < 1:
+		pass
 	response = device.read(device.in_waiting)
 	state = (response[-1] == 255)
 	debug(f"State of device {device.name} is {state}")

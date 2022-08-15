@@ -84,11 +84,11 @@ class Sweep(dict):
 				if dict_[key] not in self._draft[key]:
 					raise ValueError(f"The argument '{dict_[key]}' for the '{key}' parameter is not understood. Please use one of the following values: {_draft[key]}")
 			
+		if "frequency" not in dict_:
+			raise ValueError(f"The Sweep object is missing the 'frequency' parameter.")
 		freq_tmp = dict_["frequency"]
+
 		if dict_["mode"] == "fixed":
-			if "frequency" not in dict_:
-				raise ValueError(f"The Sweep object is missing the 'frequency' parameter.")
-			
 			try:
 				frequency = pfloat(freq_tmp)
 			except ValueError as E:
@@ -157,8 +157,6 @@ class Sweep(dict):
 				frequencies[1::2] = tmp_rtl[1:]
 
 		super().__init__(**dict_, **kwargs)
-		self["meta_span"] = np.max(frequencies) - np.min(frequencies)
-		self["meta_center"] = (np.min(frequencies) + np.max(frequencies)) / 2
 		self.frequencies = frequencies
 
 class Cdeque(deque):
@@ -380,11 +378,13 @@ class Measurement(dict):
 									time.sleep(0.1)
 
 			self.result = result.copy()
+			self.aborted = False
 
 		except UserAbort as E:
 			result = result[~np.isnan(result[:, 0])]
 			# @Luis: Maybe check that every point has same number of occurences
 			self.result = result.copy()
+			self.aborted = True
 
 		except Exception as E:
 			raise
@@ -424,12 +424,16 @@ class Measurement(dict):
 		
 		for column, pump in zip(intensities.T, pump_frequencies):
 			tmp = f"_Pump@{pump:.2f}" if pump else ""
-			filename = f"Probe@{probe:.2f}{tmp}_{self['general_datestart'].replace(':', '-')}"
+			tmp2 = f"_ABORTED" if self.aborted else ""
+			filename = f"Probe@{probe:.2f}{tmp}{tmp2}_{self['general_datestart'].replace(':', '-')}"
 			filename = os.path.realpath(f"{directory}/{filename}")
 			np.savetxt(f"{filename}.dat", np.array((probe_frequencies, column)).T, delimiter="\t")
 			self.save_meta(filename)
 
 	def save_meta(self, filename):
+		if self.aborted:
+			self["general_aborted"] = True
+		
 		output_dict = {}
 		for key, value in self.items():
 			category, name = key.split("_", 1)

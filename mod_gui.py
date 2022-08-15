@@ -1776,6 +1776,7 @@ class QueueWindow(EQDockWidget):
 		self.layout.addWidget(self.listwidget)
 		self.listwidget.setDragDropMode(QAbstractItemView.InternalMove)
 		self.listwidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+		self.listwidget.setFont(QFont("Courier"))
 	
 		QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.deleterow);
 
@@ -1821,33 +1822,47 @@ class QueueWindow(EQDockWidget):
 	
 	def update_queue(self, queue):
 		self.listwidget.clear()
+		spacer = " | "
 		for measurement in queue:
 			listwidgetitem = QListWidgetItem()
 			
 			measurement_string = []
 			
-			measurement_string.append(measurement["general_mode"].upper())
-			measurement_string.append(" ")
+			mode = measurement["general_mode"].upper()
+			measurement_string.append(f"{mode:7}")
+			measurement_string.append(spacer)
 			
+			frequencies = {}
+			for type in ("probe", "pump"):
+				tmp_dict = measurement.get(f"{type}_frequency")
+				if not tmp_dict:
+					continue
+				
+				freq_dict = tmp_dict["frequency"]
+				if tmp_dict["mode"] == "fixed":
+					frequencies[type] = (freq_dict, 0)
+				elif "center" in freq_dict and "span" in freq_dict:
+					frequencies[type] = (freq_dict["center"], freq_dict["span"])
+				else:
+					start, stop = freq_dict["start"], freq_dict["stop"]
+					frequencies[type] = ((start + stop) / 2, stop - start)
 			
-			probe = f'{measurement["probe_frequency"]["meta_center"]:.2f}'
-			probe_width = f'{measurement["probe_frequency"]["meta_span"]:.2f}'
-			
-			measurement_string.append("Probe: ")
-			measurement_string.append(probe)
+			probe, probe_width = frequencies["probe"]
+			probe_string = f"Probe: {probe:10.2f}"
 			if probe_width:
-				measurement_string.append("/")
-				measurement_string.append(probe_width)
+				probe_string += f"/{probe_width:7.2f}"
+			
+			measurement_string.append(f"{probe_string:25}")
 			
 			if measurement["general_mode"] != "classic":
-				pump = measurement["pump_frequency"]["meta_center"]
-				pump_width = f'{measurement["pump_frequency"]["meta_span"]:.2f}'
+				measurement_string.append(spacer)
+				pump, pump_width = frequencies["pump"]
+				pump_string = f"Pump: {pump:10.2f}"
 			
-				measurement_string.append(" Pump: ")
-				measurement_string.append(pump)
 				if pump_width:
-					measurement_string.append("/")
-					measurement_string.append(pump_width)
+					pump_string += f"/{pump_width:7.2f}"
+				
+				measurement_string.append(f"{pump_string:24}")
 
 			tmp = "".join(measurement_string)
 			listwidgetitem.setText(tmp)
