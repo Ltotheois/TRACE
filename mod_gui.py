@@ -36,6 +36,7 @@ import sys
 import re
 import io
 import time
+import copy
 import wrapt
 import random
 import json
@@ -570,11 +571,6 @@ class MainWindow(QMainWindow):
 				None,
 				QQ(QAction, parent=self, text="&Edit Files", shortcut="Shift+7", tooltip="See current files and their options", change=lambda x: self.filewindow.show()),
 				None,
-				QQ(QAction, parent=self, text="&Save current values as default", shortcut="Ctrl+D", tooltip="Save current configuration as default", change=lambda x: self.saveoptions()),
-				None,
-				QQ(QAction, parent=self, text="&Save measurement values", shortcut="Ctrl+S", tooltip="Save current measurement values to file", change=lambda x: self.savemeasurement()),
-				QQ(QAction, parent=self, text="&Load measurement values", shortcut="Ctrl+O", tooltip="Open measurement and set values accordingly", change=lambda x: self.loadmeasurement()),
-				None,
 				QQ(QAction, parent=self, text="&Quit", change=self.close, tooltip="Close the program"),
 			),
 			"View": (
@@ -596,6 +592,14 @@ class MainWindow(QMainWindow):
 				QQ(QAction, parent=self, text="&Manual Draw", tooltip="Draw canvas manually", change=lambda x: self.plotwidget.manual_draw(), shortcut="Shift+Space"),
 			),
 			"Actions": (
+				QQ(QAction, parent=self, text="&Save Measurement Values", shortcut="Ctrl+S", tooltip="Save current measurement values to file", change=lambda x: self.savemeasurement()),
+				QQ(QAction, parent=self, text="&Load Measurement Values", shortcut="Ctrl+O", tooltip="Open measurement and set values accordingly", change=lambda x: self.loadmeasurement()),
+				None,
+				QQ(QAction, parent=self, text="&Save Queue", tooltip="Save queue to file", change=lambda x: self.queuewindow.savequeue()),
+				QQ(QAction, parent=self, text="&Load Queue", tooltip="Load queue from file", change=lambda x: self.queuewindow.loadqueue()),
+				None,
+				QQ(QAction, parent=self, text="&Save current values as default", shortcut="Ctrl+D", tooltip="Save current configuration as default", change=lambda x: self.saveoptions()),
+				None,
 				QQ(QAction, parent=self, text="&Reconnect Experiment", tooltip="Reconnect the websocket to the experiment", change=lambda x: ws.start()),
 			),
 			"Info": (
@@ -838,7 +842,7 @@ class PlotWidget(QGroupBox):
 		
 		self.timer = QTimer(app)
 		self.timer.timeout.connect(self.set_meas_data)
-		self.timer.start(200)
+		self.timer.start(500)
 
 	def position_dialog(self):
 		resp, rc = QInputDialog.getText(self, 'Set center position', 'Frequency:')
@@ -1017,6 +1021,8 @@ class PlotWidget(QGroupBox):
 
 	@synchronized_d(locks["axs"])
 	def set_meas_data(self, standalone=True):
+		if mw.tabwidget.currentIndex():
+			return
 		ax = self.ax
 		autoscale = mw.config["plot_autoscale"]
 		meas_data = self.get_meas_data()
@@ -1030,6 +1036,7 @@ class PlotWidget(QGroupBox):
 		ymin, ymax = self.intrange
 
 		segs = np.array(((xs[:-1], xs[1:]), (ys[:-1], ys[1:]))).T
+		# @Luis: This could be sped up -> many points lead to unresponsive UI
 		coll = matplotlib.collections.LineCollection(segs, colors=mw.config["color_meas"])
 		
 		try:
@@ -1073,7 +1080,7 @@ class PlotWidget(QGroupBox):
 			text_annotation = ""
 		else:
 			if mw.config["flag_showmainplotposition"]:
-				text_top = f"({x=:.2f}, {y=:.2f})"
+				text_top = f"({x=:.4f}, {y=:.4f})"
 			else:
 				text_top = ""
 
@@ -1155,19 +1162,18 @@ class Websocket():
 
 		elif action == "error":
 			error = message["error"]
-			mw.notification(f"<span style='color:#eda711;'>WARNING</span>: {error}")
+			mw.notification(f"<span style='color:#eda711;'>EXPERIMENT WARNING</span>: {error}")
 		
 		elif action == "uerror":
 			error = message["error"]
-			mw.notification(f"<span style='color:#ff0000;'>ERROR</span>: {error}")
-
+			mw.notification(f"<span style='color:#ff0000;'>EXPERIMENT ERROR</span>: {error}")
 
 		else:
 			mw.notification(f"<span style='color:#ff0000;'>ERROR</span>: Received a message with the unknown action '{action}' {message=}.")
 
 	def on_error(self, ws, error):
 		mw.update_state("disconnected")
-		mw.notification(f"<span style='color:#ff0000;'>ERROR CONNECTION</span>: {error}")
+		mw.notification(f"<span style='color:#ff0000;'>CONNECTION ERROR</span>: {error}")
 
 	def on_close(self, ws, close_status_code, close_msg):
 		mw.update_state("disconnected")
@@ -1245,107 +1251,6 @@ class SignalClass(QObject):
 	updatemeasurement = pyqtSignal(tuple)
 	def __init__(self):
 		super().__init__()
-
-class Sweep():
-	draft = {
-		"mode": {"fixed", "sweep"},
-		"direction": {"forth", "forthback", "back", "backforth", "fromcenter", "random"},
-	}
-
-	def __init__(self, dict_={}, **kwargs):
-		dict_.update(**kwargs)
-		
-	
-		if "iterations" not in dict_:
-			dict_["iterations"] = 1
-		else:
-			try:
-				dict_["iterations"] = int(dict_["iterations"])
-			except ValueError as E:
-				raise ValueError(f"The value for the iterations '{dict_['iterations']}' could not be converted to an integer.")
-		
-		for key in ("mode", "direction"):
-			if not key in dict_:
-				raise ValueError(f"The Sweep object is missing the '{key}' parameter.")
-			if dict_[key] not in self.draft[key]:
-				raise ValueError(f"The argument '{dict_[key]}' for the '{key}' parameter is not understood. Please use one of the following values: {draft[key]}")
-		
-		freq_tmp = dict_["frequency"]
-		if dict_["mode"] == "fixed":
-			if "frequency" not in dict_:
-				raise ValueError(f"The Sweep object is missing the 'frequency' parameter.")
-			
-			try:
-				frequency = pfloat(freq_tmp)
-			except ValueError as E:
-				raise ValueError(f"The frequency value has to be a positive numeric value. The value {freq_tmp} could not be converted to a positive numeric value.")
-				
-			frequencies = np.array((frequency,))
-			
-		else:
-			if "center" in freq_tmp and "span" in freq_tmp:
-				try:
-					center = pfloat(freq_tmp["center"])
-				except ValueError as E:
-					raise ValueError(f"The center value has to be a positive numeric value. The value {freq_tmp['center']} could not be converted to a positive numeric value.")
-				
-				try:
-					span = pfloat(freq_tmp["span"])
-				except ValueError as E:
-					raise ValueError(f"The span value has to be a positive numeric value. The value {freq_tmp['span']} could not be converted to a positive numeric value.")
-				
-				freq_range = (center-span/2, center+span/2)
-				
-			elif "start" in freq_tmp and "stop" in freq_tmp:
-				try:
-					start = pfloat(freq_tmp["start"])
-				except ValueError as E:
-					raise ValueError(f"The start value has to be a positive numeric value. The value {freq_tmp['start']} could not be converted to a positive numeric value.")
-				
-				try:
-					stop = pfloat(freq_tmp["stop"])
-				except ValueError as E:
-					raise ValueError(f"The stop value has to be a positive numeric value. The value {freq_tmp['stop']} could not be converted to a positive numeric value.")
-				
-				freq_range = (start, stop)
-				center, span = (start + stop)/2, stop - start
-			
-			else:
-				raise ValueError(f"The frequency range could not be determined. Please specify 'center' and 'span' or 'start' and 'stop'.")
-			
-			if "points" in freq_tmp:
-				try:
-					points = int(freq_tmp["points"])
-				except ValueError as E:
-					raise ValueError(f"The points value has to be an integer value. The value {freq_tmp['points']} could not be converted to an integer value.")
-				
-			elif "stepsize" in freq_tmp:
-				try:
-					points = int((freq_range[1] - freq_range[0]) / (freq_tmp["stepsize"] / 1000))
-				except ValueError as E:
-					raise ValueError(f"The stepsize value has to be a numeric value. The value {freq_tmp['stepsize']} could not be converted to a numeric value.")
-
-			direction = dict_["direction"]
-			
-			if direction == "forth":
-				frequencies = np.linspace(*freq_range, points)
-			elif direction == "back":
-				frequencies = np.linspace(*freq_range[::-1], points)
-			elif direction == "forthback":
-				frequencies = np.concatenate((np.linspace(*freq_range, points), np.linspace(*freq_range[::-1], points)))
-			elif direction == "backforth":
-				frequencies = np.concatenate((np.linspace(*freq_range[::-1], points), np.linspace(*freq_range, points)))
-			elif direction == "fromcenter":
-				tmp_ltr = np.linspace(center, range_[1], int(points/2))
-				tmp_rtl = np.linspace(center, range_[0], int(points/2))
-				frequencies = np.empty((tmp_ltr.size + tmp_rtl.size -1), dtype=tmp_ltr.dtype)
-				frequencies[0::2] = tmp_ltr
-				frequencies[1::2] = tmp_rtl[1:]
-
-		
-		self.frequencies = frequencies
-		self.information = dict_
-		self.iterations = dict_["iterations"]
 
 class Color(str):
 	def __new__(cls, color):
@@ -1545,7 +1450,6 @@ class QSweep(QWidget):
 		self.widgets = {
 			"Mode": QQ(QComboBox, options=("fixed", "sweep"), change=self.update_state),
 			"Iterations": QQ(QSpinBox, range=(1, None), change=self.update_state),
-			"Frequency": QQ(QDoubleSpinBox, range=(0, None), change=self.update_state),
 			"Direction": QQ(QComboBox, options=("forth", "forthback", "back", "backforth", "fromcenter", "random"), change=self.update_state),
 			"Start": QQ(QDoubleSpinBox, range=(0, None), change=self.update_state),
 			"Stop": QQ(QDoubleSpinBox, range=(0, None), change=self.update_state),
@@ -1618,23 +1522,26 @@ class QSweep(QWidget):
 		self.widgets["Mode"].setCurrentText(state["mode"])
 		
 		if state["mode"] == "fixed":
-			self.widgets["Frequency"].setValue(state["frequency"])
+			self.widgets["Center"].setValue(state["center"])
 		else:
 			self.widgets["Direction"].setCurrentText(state.get("direction", "forthback"))
 			self.widgets["Iterations"].setValue(state.get("iterations", 1))
 			
-			freq_tmp = state["frequency"]
-			if "center" in freq_tmp and "span" in freq_tmp:
-				self.widgets["Center"].setValue(freq_tmp["center"])
-				self.widgets["Span"].setValue(freq_tmp["span"])
+			if "center" in state and "span" in state:
+				self.widgets["Center"].setValue(state["center"])
+				self.widgets["Span"].setValue(state["span"])
+				self._state["rangemode"] = "center"
 			else:
-				self.widgets["Start"].setValue(freq_tmp["start"])
-				self.widgets["Stop"].setValue(freq_tmp["stop"])
+				self.widgets["Start"].setValue(state["start"])
+				self.widgets["Stop"].setValue(state["stop"])
+				self._state["rangemode"] = "range"
 			
-			if "points" in freq_tmp:
-				self.widgets["Points"].setValue(freq_tmp["points"])
+			if "points" in state:
+				self.widgets["Points"].setValue(state["points"])
+				self._state["pointsmode"] = "points"
 			else:
-				self.widgets["Stepsize"].setValue(freq_tmp["stepsize"])
+				self.widgets["Stepsize"].setValue(state["stepsize"])
+				self._state["pointsmode"] = "steps"
 		
 		self._state["updating"] = False
 		self.update_state()
@@ -1647,10 +1554,10 @@ class QSweep(QWidget):
 		state = self.getState()
 		
 		if state["mode"] == "fixed":
-			hidden_keys = keys - {"Mode", "Frequency"}
+			hidden_keys = keys - {"Mode", "Center"}
 		
 		else:
-			hidden_keys = ["Frequency"]
+			hidden_keys = []
 			if self._state["rangemode"] == "center":
 				hidden_keys.extend(("Start", "Stop"))
 			else:
@@ -1669,31 +1576,34 @@ class QSweep(QWidget):
 			if self.toggles.get(key):
 				self.toggles[key].setHidden(hidden)
 		
+		if state["mode"] == "fixed":
+			self.toggles["Center"].setHidden(True)
+		
 		self.changed.emit()
 		
 	def getState(self):
 		state = {"mode": self.widgets["Mode"].currentText(), }
 		
 		if state["mode"] == "fixed":
-			state["frequency"] = self.widgets["Frequency"].value()
+			state["center"] = self.widgets["Center"].value()
 		else:
 			state["direction"] = self.widgets["Direction"].currentText()
 			state["iterations"] = self.widgets["Iterations"].value()
 			if self._state["rangemode"] == "center":
-				state["frequency"] = {
+				state.update({
 					"center": self.widgets["Center"].value(),
 					"span": self.widgets["Span"].value(),
-				}
+				})
 			else:
-				state["frequency"] = {
+				state.update({
 					"start": self.widgets["Start"].value(),
 					"stop": self.widgets["Stop"].value(),
-				}
+				})
 			
 			if self._state["pointsmode"] == "points":
-				state["frequency"]["points"] = self.widgets["Points"].value()
+				state["points"] = self.widgets["Points"].value()
 			else:
-				state["frequency"]["stepsize"] = self.widgets["Stepsize"].value()
+				state["stepsize"] = self.widgets["Stepsize"].value()
 		
 		return(state)
 
@@ -1778,6 +1688,8 @@ class QueueWindow(EQDockWidget):
 		self.listwidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
 		self.listwidget.setFont(QFont("Courier"))
 	
+		self.queue = []
+	
 		QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.deleterow);
 
 	def deleterow(self, *args, **kwargs):
@@ -1800,27 +1712,72 @@ class QueueWindow(EQDockWidget):
 			ws.send({"action": "add_measurement_first", "measurement": measurement})
 		elif key == "Run now":
 			ws.send({"action": "add_measurement_now", "measurement": measurement})
+		elif key == "Del all":
+			reply = QMessageBox.question(self, 'Delete all', 'Are you sure you want to delete all pending measurements?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+			if reply == QMessageBox.Yes:
+				ws.send({"action": "del_measurements"})
 		elif key == "Add list":
-			# @Luis: reimplement this -> send multiple measurements as "measurements": measurements
 			fname = QFileDialog.getOpenFileName(None, 'Choose List to load',"")[0]
 			if not fname:
 				return
 			
 			with open(fname) as file:
 				list_ = file.read()
-			ws.send({"action": "add_measurement_list", "measurement": measurement, "list": list_})
-		elif key == "Del all":
-			reply = QMessageBox.question(self, 'Delete all', 'Are you sure you want to delete all pending measurements?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-			if reply == QMessageBox.Yes:
-				ws.send({"action": "del_measurements"})
+			
+			list_ = np.genfromtxt(list_.split("\n"), delimiter="\t", names=True, deletechars='')
+			headers = list_.dtype.names
+			measurements = []
+			
+			for i, row in enumerate(list_):
+				update_dict = {key: value for key, value in zip(headers, row)}
+				tmp_measurement = copy.deepcopy(measurement)
+				
+				for header, value in update_dict.items():
+					if header in tmp_measurement.keys():
+						tmp_measurement[header] = value
+					elif header.startswith("probe.") or header.startswith("pump."):
+						source, suffix = header.split(".", 1)
+						tmp_measurement[f"{source}_frequency"][suffix] = value
+					else:
+						raise CustomError(f"Did not understand the header {header} in you list.")
+				
+				measurements.append(tmp_measurement)
+			ws.send({"action": "add_measurements", "measurements": measurements})
+		
 		elif key == "Add batch":
-			raise NotImplementedError
-			# @Luis
+			dialog = BatchDialog()
+			dialog.exec_()
+
+			if dialog.result() == 1:
+				result = dialog.save()
+				measurements = []
+				
+				for i_pump in range(result["pump"]):
+					for i_probe in range(result["probe"]):
+						tmp_measurement = copy.deepcopy(measurement)
+						
+						for source in ("probe", "pump"):
+							i = i_pump if source == "pump" else i_probe
+							tmp_dict = tmp_measurement[f"{source}_frequency"]
+							
+							if tmp_dict.get("mode") != "fixed":
+								if "center" in tmp_dict and "span" in tmp_dict:
+									tmp_dict["center"] += tmp_dict["span"] * i
+								else:
+									start, stop = tmp_dict["start"], tmp_dict["stop"]
+									span  = stop - start
+									tmp_dict["start"] += span * i
+									tmp_dict["stop"] += span * i
+						
+						measurements.append(tmp_measurement)
+				
+				ws.send({"action": "add_measurements", "measurements": measurements})
 		
 		# @Luis: Command to set autophase
 		# @Luis: Maybe also option to measure x or magnitude
 	
 	def update_queue(self, queue):
+		self.queue = queue
 		self.listwidget.clear()
 		spacer = " | "
 		for measurement in queue:
@@ -1838,13 +1795,12 @@ class QueueWindow(EQDockWidget):
 				if not tmp_dict:
 					continue
 				
-				freq_dict = tmp_dict["frequency"]
 				if tmp_dict["mode"] == "fixed":
-					frequencies[type] = (freq_dict, 0)
-				elif "center" in freq_dict and "span" in freq_dict:
-					frequencies[type] = (freq_dict["center"], freq_dict["span"])
+					frequencies[type] = (tmp_dict["center"], 0)
+				elif "center" in tmp_dict and "span" in tmp_dict:
+					frequencies[type] = (tmp_dict["center"], tmp_dict["span"])
 				else:
-					start, stop = freq_dict["start"], freq_dict["stop"]
+					start, stop = tmp_dict["start"], tmp_dict["stop"]
 					frequencies[type] = ((start + stop) / 2, stop - start)
 			
 			probe, probe_width = frequencies["probe"]
@@ -1869,7 +1825,139 @@ class QueueWindow(EQDockWidget):
 			listwidgetitem.setToolTip("\n".join([f"{key}: {value}" for key, value in measurement.items()]))
 			self.listwidget.addItem(listwidgetitem)
 
+	def savequeue(self):
+		fname = QFileDialog.getSaveFileName(None, 'Choose file to save queue to',"","Queue File (*.queue);;All Files (*)")[0]
+		if not fname:
+			return
+		
+		with open(fname, "w+") as file:
+			file.write(json.dumps(self.queue))
 	
+	def loadqueue(self):
+		fname = QFileDialog.getOpenFileName(None, 'Choose queue to load',"","Queue File (*.queue);;All Files (*)")[0]
+		if not fname:
+			return
+		
+		with open(fname, "r") as file:
+			queue = json.loads(file.read())
+		
+		for measurement in queue:
+			ws.send({"action": "add_measurement_last", "measurement": measurement})
+
+class BatchDialog(QDialog):
+	def __init__(self):
+		super().__init__()
+		QShortcut("Esc", self).activated.connect(lambda: self.predone(0))
+
+		self.setWindowTitle(f"Batch Dialog")
+		self.resize(mw.config["batchdialog_width"], mw.config["batchdialog_height"])
+
+		measurement = mw.get_measurement_data()
+		self.widgets = {}
+		
+		layout = QGridLayout()
+		self.setLayout(layout)
+		current_row = 0
+		columns = 2
+		
+		for source in ("probe", "pump"):
+			Source = source.capitalize()
+			if current_row:
+				layout.setRowStretch(current_row, 2)
+				current_row += 1
+			layout.addWidget(QQ(QLabel, text=Source), current_row, 0, 1, columns)
+			current_row += 1
+			self.widgets[source] = {}
+			tmp_dict = measurement[f"{source}_frequency"]
+			if tmp_dict["mode"] != "sweep":
+				layout.addWidget(QQ(QLabel, text=f"Please choose sweep as mode in the {Source} panel to activate this section.", wordwrap=True), current_row, 0, 1, columns)
+				current_row += 1
+			else:
+				if "span" in tmp_dict and "center" in tmp_dict:
+					center, span = tmp_dict["center"], tmp_dict["span"]
+					
+					self.widgets[source]["center"] = tmp = QQ(QDoubleSpinBox, range=(0, None), value=center, change=self.update)
+					layout.addWidget(QQ(QLabel, text="Center first Measurement: "), current_row, 0)
+					layout.addWidget(tmp, current_row, 1)
+					current_row += 1
+					
+					self.widgets[source]["span"] = tmp = QQ(QDoubleSpinBox, range=(0, None), value=span, change=self.update)
+					layout.addWidget(QQ(QLabel, text="Span first Measurement: "), current_row, 0)
+					layout.addWidget(tmp, current_row, 1)
+					current_row += 1
+				else:
+					start, stop = tmp_dict["start"], tmp_dict["stop"]
+					
+					self.widgets[source]["start"] = tmp = QQ(QDoubleSpinBox, range=(0, None), value=start, change=self.update)
+					layout.addWidget(QQ(QLabel, text="Start first Measurement: "), current_row, 0)
+					layout.addWidget(tmp, current_row, 1)
+					current_row += 1
+					
+					self.widgets[source]["stop"] = tmp = QQ(QDoubleSpinBox, range=(0, None), value=stop, change=self.update)
+					layout.addWidget(QQ(QLabel, text="Stop first Measurement: "), current_row, 0)
+					layout.addWidget(tmp, current_row, 1)
+					current_row += 1
+
+				
+				self.widgets[source]["measurements"] = tmp = QQ(QSpinBox, range=(1, None), change=self.update)
+				layout.addWidget(QQ(QLabel, text="Number of Measurements: "), current_row, 0)
+				layout.addWidget(tmp, current_row, 1)
+				current_row += 1
+				
+				self.widgets[source]["starttotal"] = tmp = QQ(QDoubleSpinBox, range=(0, None), enabled=False)
+				layout.addWidget(QQ(QLabel, text="Start Frequency All: "), current_row, 0)
+				layout.addWidget(tmp, current_row, 1)
+				current_row += 1
+				
+				self.widgets[source]["stoptotal"] = tmp = QQ(QDoubleSpinBox, range=(0, None), enabled=False)
+				layout.addWidget(QQ(QLabel, text="Stop Frequency All: "), current_row, 0)
+				layout.addWidget(tmp, current_row, 1)
+				current_row += 1
+		
+		layout.setRowStretch(current_row, 2)
+		current_row += 1
+		
+		buttons = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+		buttonBox = QDialogButtonBox(buttons)
+		buttonBox.setCenterButtons(True)
+		buttonBox.accepted.connect(lambda: self.predone(1))
+		buttonBox.rejected.connect(lambda: self.predone(0))
+		layout.addWidget(buttonBox, current_row, 0, 1, columns)
+		self.update()
+	
+	def update(self):
+		for source in ("probe", "pump"):
+			widgets = self.widgets.get(source)
+			if widgets:
+				measurements = widgets["measurements"].value()
+				if "center" in widgets and "span" in widgets:
+					center, span = widgets["center"].value(), widgets["span"].value()
+					start_total, stop_total = center - span * 0.5, center + span * (measurements - 0.5)
+				else:
+					start, stop = widgets["start"].value(), widgets["stop"].value()
+					span = (stop - start)
+					start_total, stop_total = start, start + span * measurements
+					
+				widgets["starttotal"].setValue(start_total)
+				widgets["stoptotal"].setValue(stop_total)
+
+	def save(self):
+		result = {}
+		for source in ("probe", "pump"):
+			widgets = self.widgets.get(source)
+			if widgets:
+				measurements = widgets["measurements"].value()
+			else:
+				measurements = 1
+			result[source] = measurements
+		
+		return(result)
+
+	def predone(self, val):
+		mw.config["batchdialog_width"] =	self.geometry().width()
+		mw.config["batchdialog_height"] =	self.geometry().height()
+		self.done(val)
+
 class GeneralWindow(MeasWidget):
 	def __init__(self, parent):
 		self.gridpos = (0, 1)
@@ -2690,13 +2778,15 @@ config_specs = {
 												"mode": "sweep",
 												"iterations": 1,
 												"direction": "forthback",
-												"frequency": {"center": 69000, "span": 4.20, "points": 1000,},
+												"center": 69000, 
+												"span": 4.20, 
+												"points": 1000,
 											}, dict],
 										
 	"pump_power":							[10, int],
 	"pump_frequency":						[{
 												"mode": "fixed",
-												"frequency": 19840,
+												"center": 19840,
 											}, dict],
 	
 	"lockin_fmfrequency":					[27613, float],
@@ -2764,6 +2854,9 @@ config_specs = {
 	"commandlinedialog_height":				[250, int],
 	"commandlinedialog_commands":			[[], list],
 	"commandlinedialog_current":			[1, int],
+
+	"batchdialog_width":					[1000, int],
+	"batchdialog_height":					[500, int],
 
 	"files_exp":							[{}, dict],
 	"files_cat":							[{}, dict],

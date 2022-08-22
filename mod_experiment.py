@@ -24,10 +24,27 @@ sys.path.insert(0, homefolder)
 import mod_devices as devices
 import mod_pumpcell
 
-# sys.stdout = open(homefolder + "/../logs/exp_log.txt", "w");
-# sys.stderr = open(homefolder + "/../logs/exp_errorlog.txt", "w")
-
 URL, PORT = "localhost", 8112
+
+class Tee(object):
+	def __init__(self, name, mode, stderr=False):
+		self.file = open(name, mode)
+		self.std = sys.stderr if stderr else sys.stdout
+		if stderr:
+			sys.stderr = self
+		else:
+			sys.stdout = self
+	def __del__(self):
+		if stderr:
+			sys.stderr = self.std
+		else:
+			sys.stdout = self.std
+		self.file.close()
+	def write(self, data):
+		self.file.write(data)
+		self.std.write(data)
+	def flush(self):
+		self.file.flush()
 
 class CustomError(Exception):
 	pass
@@ -83,61 +100,59 @@ class Sweep(dict):
 				raise ValueError(f"The Sweep object is missing the '{key}' parameter.")
 				if dict_[key] not in self._draft[key]:
 					raise ValueError(f"The argument '{dict_[key]}' for the '{key}' parameter is not understood. Please use one of the following values: {_draft[key]}")
-			
-		if "frequency" not in dict_:
-			raise ValueError(f"The Sweep object is missing the 'frequency' parameter.")
-		freq_tmp = dict_["frequency"]
 
 		if dict_["mode"] == "fixed":
 			try:
-				frequency = pfloat(freq_tmp)
+				center = pfloat(dict_["center"])
 			except ValueError as E:
-				raise ValueError(f"The frequency value has to be a positive numeric value. The value {freq_tmp} could not be converted to a positive numeric value.")
+				raise ValueError(f"The center value has to be a positive numeric value. The value {dict_['center']} could not be converted to a positive numeric value.")
 				
-			frequencies = np.array((frequency,))
+			frequencies = np.array((center,))
 			
 		else:
-			if "center" in freq_tmp and "span" in freq_tmp:
+			
+			if "center" in dict_ and "span" in dict_:
 				try:
-					center = pfloat(freq_tmp["center"])
+					center = pfloat(dict_["center"])
 				except ValueError as E:
-					raise ValueError(f"The center value has to be a positive numeric value. The value {freq_tmp['center']} could not be converted to a positive numeric value.")
-				
-				try:
-					span = pfloat(freq_tmp["span"])
-				except ValueError as E:
-					raise ValueError(f"The span value has to be a positive numeric value. The value {freq_tmp['span']} could not be converted to a positive numeric value.")
-				
-				freq_range = (center-span/2, center+span/2)
-				
-			elif "start" in freq_tmp and "stop" in freq_tmp:
-				try:
-					start = pfloat(freq_tmp["start"])
-				except ValueError as E:
-					raise ValueError(f"The start value has to be a positive numeric value. The value {freq_tmp['start']} could not be converted to a positive numeric value.")
+					raise ValueError(f"The center value has to be a positive numeric value. The value {dict_['center']} could not be converted to a positive numeric value.")
 				
 				try:
-					stop = pfloat(freq_tmp["stop"])
+					span = pfloat(dict_["span"])
 				except ValueError as E:
-					raise ValueError(f"The stop value has to be a positive numeric value. The value {freq_tmp['stop']} could not be converted to a positive numeric value.")
+					raise ValueError(f"The span value has to be a positive numeric value. The value {dict_['span']} could not be converted to a positive numeric value.")
 				
-				freq_range = (start, stop)
+				freq_range = np.array((center-span/2, center+span/2))
+				
+			elif "start" in dict_ and "stop" in dict_:
+				try:
+					start = pfloat(dict_["start"])
+				except ValueError as E:
+					raise ValueError(f"The start value has to be a positive numeric value. The value {dict_['start']} could not be converted to a positive numeric value.")
+				
+				try:
+					stop = pfloat(dict_["stop"])
+				except ValueError as E:
+					raise ValueError(f"The stop value has to be a positive numeric value. The value {dict_['stop']} could not be converted to a positive numeric value.")
+				
+				freq_range = np.array((start, stop))
 				center, span = (start + stop)/2, stop - start
 			
 			else:
 				raise ValueError(f"The frequency range could not be determined. Please specify 'center' and 'span' or 'start' and 'stop'.")
 			
-			if "points" in freq_tmp:
+			
+			if "points" in dict_:
 				try:
-					points = max(1, int(freq_tmp["points"]))
+					points = max(1, int(dict_["points"]))
 				except ValueError as E:
-					raise ValueError(f"The points value has to be an integer value. The value {freq_tmp['points']} could not be converted to an integer value.")
+					raise ValueError(f"The points value has to be an integer value. The value {dict_['points']} could not be converted to an integer value.")
 				
-			elif "stepsize" in freq_tmp:
+			elif "stepsize" in dict_:
 				try:
-					points = int((freq_range[1] - freq_range[0]) / (freq_tmp["stepsize"] / 1000))
+					points = int((freq_range[1] - freq_range[0]) / (dict_["stepsize"] / 1000))
 				except ValueError as E:
-					raise ValueError(f"The stepsize value has to be a numeric value. The value {freq_tmp['stepsize']} could not be converted to a numeric value.")
+					raise ValueError(f"The stepsize value has to be a numeric value. The value {dict_['stepsize']} could not be converted to a numeric value.")
 
 			direction = dict_["direction"]
 			
@@ -318,12 +333,20 @@ class Measurement(dict):
 
 			
 			self.save()
+			
+			if self.sendnotification:
+				address = self["general_notificationaddress"]
+				# @Luis: implement notification here
+				# sendnotification("Measurement finished successfully", f"The measurement finished without any errors.")
 		
 		except Exception as E:
+			if self.sendnotification:
+				address = self["general_notificationaddress"]
+				# @Luis: implement notification here
+				# sendnotification("Measurement led to error", f"The execution of the measurement led to the following error:\n{E}")
 			raise
 		
 		finally:
-			# @Luis: implement notification here
 			for device in (self.lockin, self.probe, self.pump):
 				if device:
 					device.close()
@@ -341,7 +364,7 @@ class Measurement(dict):
 				pump_frequencies = [0]
 				pump_iterations = 1
 			
-			# @Luis: Think about iterations here - Maybe change for loops to while loops -> allows to change iterations while running
+			# @Luis: Maybe change for loops to while loops -> allows to change iterations while running
 			point_iterations = self["lockin_iterations"]
 			
 			n_probe, n_pump = len(probe_frequencies), len(pump_frequencies)
@@ -381,8 +404,8 @@ class Measurement(dict):
 			self.aborted = False
 
 		except UserAbort as E:
+			# Aborting can lead to different number of occurences for probe- and pump-frequency pairs
 			result = result[~np.isnan(result[:, 0])]
-			# @Luis: Maybe check that every point has same number of occurences
 			self.result = result.copy()
 			self.aborted = True
 
@@ -512,9 +535,7 @@ class Experiment():
 					"action": "uerror",
 					"error": f"An error occurred while performing a measurement:\n{E}\n{traceback.format_exc()}"
 				})
-				print(f"An error occurred while performing a measurement:\n{E}\n{traceback.format_exc()}")
-				# @Luis: write error to log
-				# raise
+				stderr.write(f"An error occurred while performing a measurement:\n{E}\n{traceback.format_exc()}")
 
 	def start(self):
 		self.thread = threading.Thread(target=self.loop, args=[])
@@ -537,7 +558,7 @@ class Experiment():
 		else:
 			for index in sorted(indices, reverse=True):
 				del self.queue[index]
-	
+		
 	def add_measurements(self, measurement_dicts):
 		errors = {}
 		measurements = []
@@ -649,6 +670,9 @@ class Websocket():
 			self.listeners.remove(websocket)
 	
 if __name__ == "__main__":
+	stdout = Tee(homefolder + "/../logs/EXPERIMENT.txt", "a+", False)
+	stderr = Tee(homefolder + "/../logs/EXPERIMENT.err", "a+", True)
+	
 	experiment = Experiment()
 	server = Websocket(experiment)
 	
