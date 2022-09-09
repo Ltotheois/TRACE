@@ -1963,7 +1963,7 @@ class GeneralWindow(MeasWidget):
 		self.gridpos = (0, 1)
 		self.title = "General"
 		self.widgets = {
-			"Mode":					QQ(QComboBox, "general_mode", options=("classic", "dr", "dmdr")),
+			"Mode":					QQ(QComboBox, "general_mode", options=("classic", "dr", "dmdr", "dmdr_am", "dr_pufm")),
 			"User":					QQ(QLineEdit, "general_user"),
 			"Molecule":				QQ(QLineEdit, "general_molecule"),
 			"Molecule Formula":		QQ(QLineEdit, "general_chemicalformula"),

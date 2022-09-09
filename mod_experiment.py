@@ -207,7 +207,7 @@ class Cdeque(deque):
 class Measurement(dict):
 	def __init__(self, dict_):
 		self.mode = dict_.get("general_mode")
-		if self.mode not in ["classic", "dr", "dmdr"]:
+		if self.mode not in ["classic", "dr", "dmdr", "dmdr_am", "dr_pufm"]:
 			raise CustomValueError(f"The parameter 'general_mode' has to be 'classic', 'dr', or 'dmdr' but is {self.mode}")
 
 		self.readpressure = dict_.get("refill_measurepressure")
@@ -244,7 +244,7 @@ class Measurement(dict):
 			checktype_dict.update({
 				"static_pumpaddress*":			str,
 				"static_pumpdevice*":			str,
-				"static_pumpmultiplication*":	str,
+				"static_pumpmultiplication*":	pint,
 				"pump_frequency*":				Sweep,
 				"pump_power*":					pint,
 			})
@@ -331,7 +331,6 @@ class Measurement(dict):
 			self["general_dateend"] = str(datetime.now())[:19]
 			self.pressure_wrapper("general_pressureend")
 
-			
 			self.save()
 			
 			if self.sendnotification:

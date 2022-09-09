@@ -44,11 +44,6 @@ class device():
 		self.connection = None
 		self.connection = rm.open_resource(visa_address)
 	
-	def command_chain(self, dict_):
-		command = self.EOL.join([f"{key} {value}" for key, value in dict_.items()])
-		command = f"{command}{self.EOL}*OPC?"
-		return(command)
-	
 	def clear_and_check(self):
 		# @Luis:
 		# *RST resets the instrument to its preset state -> first check that this does not cause any errors
@@ -172,25 +167,22 @@ class lock_in_7265(device):
 			else:
 				raise CustomError(f"Could not convert value '{value}' for key '{key}'.")
 
-		self.startvalues = {
-			"IE": 		0,
+		startvalues = {
+			"IE": 		2,
 			"REFN": 	2,
 			"VMODE": 	1,
 			"SLOPE": 	0,
-			"OA": 		600000,
 			"TC": 		dict_["lockin_timeconstant"],
-			"OF": 		dict_["lockin_fmfrequency"]*1000,
 			"SEN": 		dict_["lockin_sensitivity"],
 			"ACGAIN": 	dict_["lockin_acgain"],
 		}
 		
 		if dict_["general_mode"] == "dmdr":
-			self.startvalues.update({
-				"IE":	2,
+			startvalues.update({
 				"REFN":	1,
 			})
 
-		for key, value in self.startvalues.items():
+		for key, value in startvalues.items():
 			self.connection.write(f"{key} {value}")
 
 	def clear_and_check(self):
@@ -205,10 +197,9 @@ class Synthesizer(device):
 		if multiplication is None:
 			raise CustomError("The multiplication factor was not specified.")
 		self.multiplication = multiplication
-		self.offset = 0
 	
 	def set_frequency(self, frequency):
-		frequency = (frequency-self.offset)/self.multiplication
+		frequency = frequency / self.multiplication
 		response = self.connection.query(f"FREQ:CW {frequency}MHZ {self.EOL}*OPC?")
 		
 		if int(response) != 1:
@@ -217,64 +208,82 @@ class Synthesizer(device):
 	def prepare_for_measurement(self, dict_, devicetype):
 		super().prepare_for_measurement(dict_, devicetype)
 		
+		# Delete the following line if super class inlcudes the reset
+		self.connection.write("*RST")
+		
+		initial_frequeny = self[f"{devicetype}_frequency"].frequencies[0]
+		self.set_frequency(initial_frequency)
+		
 		if devicetype == "probe":
 			startvalues = {
+				# Go to remote
 				"&GTR": 				"",
-				"OUTP:STAT": 			"ON",
-				"SOUR:POW:MODE": 		"FIX",
-				":POW": 				dict_["probe_power"],
-				":POW:LIM": 			30,
-				":POW:OFFS": 			0,
 				
-				"LFO": 					"OFF",
-				"SOUR:LFO:FREQ:MODE": 	"FIX",
-				"SSOUR:LFO1:SOUR": 		"LF1",
-				"SOUR:LFO1:VOLT":		1,
+				# Set RF output power
+				"SOUR:POW": 			dict_["probe_power"],
 				
-				"SOUR:INP:MOD:COUP1": 	"AC",
-				
+				# Set FM modulation
 				"SOUR:FM1:STAT": 		"ON",
-				"SOUR:FM1:SOUR": 		"EXT1",
-				"SOUR:FM1:DEV": 		str(dict_["lockin_fmamplitude"] / self.multiplication / 0.6) + "kHz",
-				"SOUR:FM:RAT": 			100,
-				"SOUR:FM:MODE": 		"NORM",
+				"SOUR:FM1:DEV": 		str(dict_["lockin_fmamplitude"] / self.multiplication) + "kHz",
+				
+				# Set FM modulation signal
+				"SOUR:LFO":				"ON",
+				"SOUR:LFO1:FREQ":		str(dict_["lockin_fmfrequency"]) + "Hz",
 			}
+			
+			if dict_["general_mode"] == "dr_pufm":
+				startvalues.update({
+					"SOUR:FM1:STAT": 	"OFF",
+					"SOUR:LFO":			"OFF",
+			})
 		
 		elif devicetype == "pump":
 			startvalues = {
+				# Go to remote
 				"&GTR": 				"",
-				"OUTP:STAT": 			"ON",
-				"SOUR:POW:MODE": 		"FIX",
-				":POW": 				dict_["pump_power"],
-				":POW:LIM": 			30,
-				":POW:OFFS": 			0,
-				# "SOUR:POW:RES R01":
-				# "SOUR:POW:STEP:MODE DEC":
-				# "SOUR:POW:STEP:INCR 1":
-				# "SOUR:POW:RCL EXCL":
-				"SOUR:LFO:FREQ:MODE": 	"FIX",
-				"LFO": 					"OFF",
-				"SSOUR:LFO1:SOUR": 		"LF1",
-				"SOUR:LFO1:VOLT": 		1,
-				"SOUR:FM1:STAT": 		"OFF",
-				"SOUR:FM1:SOUR": 		"LF1",
-				"SOUR:FM1:DEV": 		10000,
-				"SOUR:FM:RAT": 			100,
-				"SOUR:FM:MODE": 		"NORM",
+				
+				# Set RF output power
+				"SOUR:POW": 			dict_["pump_power"],
 			}
 			
 			if dict_["general_mode"] == "dmdr":
 				startvalues.update({
-					"LFO": 							"ON",
+					# Turn on LFO and set FM1 values
+					"SOUR:LFO": 					"ON",
 					"SOUR:FM1:STAT": 				"ON",
 					"SOUR:FM1:DEV": 				dict_["general_dmjump"]/dict_["static_pumpmultiplication"]/2,
+					
 					"SOUR:LFO1:SHAP": 				"SQU",
 					"SOUR:LFO1:SHAP:PULS:PER":		dict_["general_dmperiod"],
 					"SOUR:LFO1:SHAP:PULS:DCYC": 	50,
 				})
-			
-				self.offset = dict_["general_dmjump"]/2
+			elif dict_["general_mode"] == "dmdr_am":
+				startvalues.update({
+					# Turn on LFO and set AM1 values
+					"SOUR:LFO": 					"ON",
+					"SOUR:AM1:STAT": 				"ON",
+					"SOUR:AM1:DEPT": 				100,
+					
+					"SOUR:LFO1:SHAP": 				"SQU",
+					"SOUR:LFO1:SHAP:PULS:PER":		str(dict_["general_dmperiod"]) + "ms",
+					"SOUR:LFO1:SHAP:PULS:DCYC": 	50,
+				})
+			elif dict_["general_mode"] == "dr_pufm":
+				startvalues.update({
+					# Turn on LFO and set FM1 values
+					"SOUR:LFO": 					"ON",
+					"SOUR:FM1:STAT": 				"ON",
+					"SOUR:FM1:DEV": 				str(dict_["lockin_fmamplitude"] / self.multiplication) + "kHz",
+					"SOUR:LFO1:FREQ":				str(dict_["lockin_fmfrequency"]) + "Hz",
+				})
+					
 		
+		for key, value in startvalues.items():
+			self.connection.write(f"{key} {value}")
+		
+		self.connection.query("*OPC?")
+		
+		# Turn on RF power
 		self.connection.write(":OUTP:STATe 1")
 
 	
