@@ -214,14 +214,21 @@ class Synthesizer(device):
 		initial_frequeny = self[f"{devicetype}_frequency"].frequencies[0]
 		self.set_frequency(initial_frequency)
 		
+		startvalues = {
+			# Go to remote
+			"&GTR": 				"",
+		
+			# Set RF output power
+			"SOUR:POW": 			dict_[f"{devicetype}_power"],
+		
+			# Set external reference
+			"SOUR:ROSC:SOUR":		"EXT",
+			"SOUR:ROSC:OUTP:SOUR":	"EXT",
+		}
+		
+		
 		if devicetype == "probe":
-			startvalues = {
-				# Go to remote
-				"&GTR": 				"",
-				
-				# Set RF output power
-				"SOUR:POW": 			dict_["probe_power"],
-				
+			startvalues.update({
 				# Set FM modulation
 				"SOUR:FM1:STAT": 		"ON",
 				"SOUR:FM1:DEV": 		str(dict_["lockin_fmamplitude"] / self.multiplication) + "kHz",
@@ -229,7 +236,7 @@ class Synthesizer(device):
 				# Set FM modulation signal
 				"SOUR:LFO":				"ON",
 				"SOUR:LFO1:FREQ":		str(dict_["lockin_fmfrequency"]) + "Hz",
-			}
+			})
 			
 			if dict_["general_mode"] == "dr_pufm":
 				startvalues.update({
@@ -238,13 +245,6 @@ class Synthesizer(device):
 			})
 		
 		elif devicetype == "pump":
-			startvalues = {
-				# Go to remote
-				"&GTR": 				"",
-				
-				# Set RF output power
-				"SOUR:POW": 			dict_["pump_power"],
-			}
 			
 			if dict_["general_mode"] == "dmdr":
 				startvalues.update({
