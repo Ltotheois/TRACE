@@ -193,6 +193,7 @@ class MainWindow(QMainWindow):
 
 		self.progressbar = QProgressBar()
 		self.statusbar.addWidget(self.progressbar, 2)
+		self.signalclass.progressbar.connect(self.progressbar.setValue)
 		
 		self.timeindicator = QQ(QLabel, text="")
 		self.statusbar.addWidget(self.timeindicator)
@@ -830,6 +831,9 @@ class PlotWidget(QGroupBox):
 
 		
 		self.meas_array = None
+		self.meas_coll = matplotlib.collections.LineCollection(np.zeros(shape=(0,2,2)), colors=mw.config["color_meas"])
+		self.ax.add_collection(self.meas_coll)
+		
 		self.shared_memory = None
 		self.freqrange = (0, 10)
 		self.intrange = (0, 1)
@@ -842,7 +846,9 @@ class PlotWidget(QGroupBox):
 		
 		self.timer = QTimer(app)
 		self.timer.timeout.connect(self.set_meas_data)
-		self.timer.start(500)
+		self.timer.start(mw.config["flag_updateplot"])
+		
+		mw.config.register("flag_updateplot", lambda: self.timer.start(max(100, mw.config["flag_updateplot"])) if mw.config["flag_updateplot"] > 0 else self.timer.stop())
 
 	def position_dialog(self):
 		resp, rc = QInputDialog.getText(self, 'Set center position', 'Frequency:')
@@ -879,9 +885,9 @@ class PlotWidget(QGroupBox):
 	def get_meas_data(self, filtered=True):
 		if self.meas_array is not None:
 			if filtered:
-				mask = ~np.isnan(self.meas_array[:, -1])
-				mw.progressbar.setValue(int(sum(mask)/len(mask)*100))
-				return(self.meas_array[mask])
+				index_ = np.isnan(self.meas_array[:, -1]).argmax()
+				mw.signalclass.progressbar.emit(int(index_ / self.meas_array.shape[0] * 100))
+				return(self.meas_array[:index_])
 			else:
 				return(self.meas_array)
 		else:
@@ -907,6 +913,7 @@ class PlotWidget(QGroupBox):
 		self.set_data()
 		
 	def set_width(self, value, absolute=True):
+		mw.config["plot_autoscale"] = False
 		position = np.mean(self.freqrange)
 		width = self.freqrange[1] - self.freqrange[0]
 		
@@ -1036,15 +1043,7 @@ class PlotWidget(QGroupBox):
 		ymin, ymax = self.intrange
 
 		segs = np.array(((xs[:-1], xs[1:]), (ys[:-1], ys[1:]))).T
-		# @Luis: This could be sped up -> many points lead to unresponsive UI
-		coll = matplotlib.collections.LineCollection(segs, colors=mw.config["color_meas"])
-		
-		try:
-			if self.plots["meas"]:
-				self.plots["meas"].remove()
-		except ValueError:
-			pass
-		self.plots["meas"] = ax.add_collection(coll)
+		self.meas_coll.set(segments=segs, color=mw.config["color_meas"])
 
 		margin = mw.config["plot_ymargin"]
 		yrange = [ymin-margin*(ymax-ymin), ymax+margin*(ymax-ymin)]
@@ -1249,6 +1248,7 @@ class SignalClass(QObject):
 	notification      = pyqtSignal(str)
 	updateconfig      = pyqtSignal(tuple)
 	updatemeasurement = pyqtSignal(tuple)
+	progressbar       = pyqtSignal(int)
 	def __init__(self):
 		super().__init__()
 
@@ -2849,6 +2849,7 @@ config_specs = {
 	"flag_showmainplotcontrols":			[True, bool],
 	"flag_showmainplotposition":			[True, bool],
 	"flag_logmaxrows":						[10000, int],
+	"flag_updateplot":						[200, int],
 
 	"commandlinedialog_width":				[500, int],
 	"commandlinedialog_height":				[250, int],
