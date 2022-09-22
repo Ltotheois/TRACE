@@ -207,8 +207,9 @@ class Cdeque(deque):
 class Measurement(dict):
 	def __init__(self, dict_):
 		self.mode = dict_.get("general_mode")
-		if self.mode not in ["classic", "dr", "dmdr", "dmdr_am", "dr_pufm"]:
-			raise CustomValueError(f"The parameter 'general_mode' has to be 'classic', 'dr', or 'dmdr' but is {self.mode}")
+		modes = devices.modes
+		if self.mode not in modes:
+			raise CustomValueError(f"The parameter 'general_mode' has to be in {modes} but is {self.mode}")
 
 		self.readpressure = dict_.get("refill_measurepressure")
 		self.sendnotification = dict_.get("general_sendnotification")
@@ -356,12 +357,15 @@ class Measurement(dict):
 			probe_frequencies = self["probe_frequency"].frequencies
 			probe_iterations = self["probe_frequency"]["iterations"]
 			
-			if (self.mode != "classic"):
-				pump_frequencies = self["pump_frequency"].frequencies
-				pump_iterations = self["pump_frequency"]["iterations"]
-			else:
+			if (self.mode == "classic"):
 				pump_frequencies = [0]
 				pump_iterations = 1
+			else:
+				pump_frequencies = self["pump_frequency"].frequencies
+				pump_iterations = self["pump_frequency"]["iterations"]
+				
+				if self.mode == "digital_dmdr":
+					self.lockin.pump = self.pump
 			
 			# @Luis: Maybe change for loops to while loops -> allows to change iterations while running
 			point_iterations = self["lockin_iterations"]

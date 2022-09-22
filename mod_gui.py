@@ -1028,11 +1028,11 @@ class PlotWidget(QGroupBox):
 
 	@synchronized_d(locks["axs"])
 	def set_meas_data(self, standalone=True):
+		meas_data = self.get_meas_data()
 		if mw.tabwidget.currentIndex():
 			return
 		ax = self.ax
 		autoscale = mw.config["plot_autoscale"]
-		meas_data = self.get_meas_data()
 		xs, ys = meas_data[:, 0], meas_data[:, 2]
 		
 		if autoscale:
@@ -1810,7 +1810,7 @@ class QueueWindow(EQDockWidget):
 			
 			measurement_string.append(f"{probe_string:25}")
 			
-			if measurement["general_mode"] != "classic":
+			if measurement["general_mode"] != devices.modes[0]:
 				measurement_string.append(spacer)
 				pump, pump_width = frequencies["pump"]
 				pump_string = f"Pump: {pump:10.2f}"
@@ -1963,7 +1963,7 @@ class GeneralWindow(MeasWidget):
 		self.gridpos = (0, 1)
 		self.title = "General"
 		self.widgets = {
-			"Mode":					QQ(QComboBox, "general_mode", options=("classic", "dr", "dmdr", "dmdr_am", "dr_pufm")),
+			"Mode":					QQ(QComboBox, "general_mode", options=devices.modes),
 			"User":					QQ(QLineEdit, "general_user"),
 			"Molecule":				QQ(QLineEdit, "general_molecule"),
 			"Molecule Formula":		QQ(QLineEdit, "general_chemicalformula"),
@@ -1981,14 +1981,14 @@ class StaticWindow(MeasWidget):
 		self.gridpos = (0, 0)
 		self.title = "Static Values"
 		self.widgets = {
-			"Probe Address":		QQ(QLineEdit, "static_probeaddress"),
-			"Probe Device":			QQ(QComboBox, "static_probedevice", options=("mock device", "agilent 8257d", "rs smf 100a")),
+			"Probe Device":			QQ(QComboBox, "static_probedevice", options=devices.deviceclasses["probe"].keys()),
 			"Probe Multiplication":	QQ(QSpinBox, "static_probemultiplication", range=(1, None)),
+			"Probe Address":		QQ(QLineEdit, "static_probeaddress"),
+			"LockIn Device":		QQ(QComboBox, "static_lockindevice", options=devices.deviceclasses["lockin"].keys()),
 			"LockIn Address":		QQ(QLineEdit, "static_lockinaddress"),
-			"LockIn Device":		QQ(QComboBox, "static_lockindevice", options=("mock device", "7265 lock in")),
-			"Pump Address":			QQ(QLineEdit, "static_pumpaddress"),
-			"Pump Device":			QQ(QComboBox, "static_pumpdevice", options=("mock device", "rs smf 100a")),
+			"Pump Device":			QQ(QComboBox, "static_pumpdevice", options=devices.deviceclasses["pump"].keys()),
 			"Pump Multiplication":	QQ(QSpinBox, "static_pumpmultiplication", range=(1, None)),
+			"Pump Address":			QQ(QLineEdit, "static_pumpaddress"),
 		}
 		return super().__init__(parent)
 
@@ -2019,10 +2019,10 @@ class LockInWindow(MeasWidget):
 		self.widgets = {
 			"FM Frequency":			QQ(QDoubleSpinBox, "lockin_fmfrequency", range=(0, None)),
 			"FM Amplitude":			QQ(QDoubleSpinBox, "lockin_fmamplitude", range=(0, None)),
-			"Timeconstant":			QQ(QComboBox, "lockin_timeconstant", options=devices.lock_in_7265.TC_OPTIONS),
+			"Timeconstant":			QQ(QComboBox, "lockin_timeconstant", options=devices.SignalRecovery7265.TC_OPTIONS),
 			"Delay Time":			QQ(QDoubleSpinBox, "lockin_delaytime", range=(0, None)),
-			"Range":				QQ(QComboBox, "lockin_sensitivity", options=devices.lock_in_7265.SEN_OPTIONS),
-			"AC Gain":				QQ(QComboBox, "lockin_acgain", options=devices.lock_in_7265.ACGAIN_OPTIONS),
+			"Range":				QQ(QComboBox, "lockin_sensitivity", options=devices.SignalRecovery7265.SEN_OPTIONS),
+			"AC Gain":				QQ(QComboBox, "lockin_acgain", options=devices.SignalRecovery7265.ACGAIN_OPTIONS),
 			"Iterations":			QQ(QDoubleSpinBox, "lockin_iterations", range=(1, None)),
 		}
 		return super().__init__(parent)
@@ -2753,7 +2753,7 @@ exp_dtypes = {
 
 # Format is: [default value, class]
 config_specs = {
-	"general_mode":							["classic", str],
+	"general_mode":							[devices.modes[0], str],
 	"general_user":							["", str],
 	"general_molecule":						["", str],
 	"general_chemicalformula":				["", str],
@@ -2765,13 +2765,14 @@ config_specs = {
 	"general_dmperiod":						[5, float],
 	
 	"static_probeaddress":					["", str],
-	"static_probedevice":					["mock device", str],
+	"static_probedevice":					["MockDevice", str],
 	"static_probemultiplication":			[1, int],
 	"static_lockinaddress":					["", str],
-	"static_lockindevice":					["mock device", str],
+	"static_lockindevice":					["MockDevice", str],
 	"static_pumpaddress":					["", str],
-	"static_pumpdevice":					["mock device", str],
+	"static_pumpdevice":					["MockDevice", str],
 	"static_pumpmultiplication":			[1, int],
+	"static_lockinreadmag":					[False, bool],
 	
 	"probe_power":							[10, int],
 	"probe_frequency":						[{
