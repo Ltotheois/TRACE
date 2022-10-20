@@ -401,6 +401,12 @@ class Measurement(dict):
 								while experiment.state != "running":
 									if experiment.state == "aborting":
 										raise UserAbort("__ABORTING__")
+									
+									with experiment.nextfrequency_lock:
+										if experiment.nextfrequency: 
+											experiment.nextfrequency = False
+											break
+									
 									time.sleep(0.1)
 
 			self.result = result.copy()
@@ -489,6 +495,9 @@ class Experiment():
 		self.queue_lock = threading.Lock()
 		self.current_measurement = None
 		self.thread = None
+		
+		self.nextfrequency = 0
+		self.nextfrequency_lock = threading.Lock()
 
 		self.spectrum = {
 			"ranges": {
@@ -642,6 +651,10 @@ class Websocket():
 					
 					elif action == "add_measurements":
 						self.experiment.add_measurements(message.get("measurements"))
+					
+					elif action == "next_frequency":
+						with self.experiment.nextfrequency_lock:
+							self.experiment.nextfrequency = True
 					
 					elif action == "kill":
 						await asyncio.gather(*[listener.close() for listener in self.listeners])

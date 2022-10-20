@@ -201,13 +201,14 @@ class MainWindow(QMainWindow):
 		self.stateindicator = QQ(QLabel, text="")
 		self.statusbar.addWidget(self.stateindicator)
 		
-		self.update_state("disconnected")
 
 		self.statebuttons = {}
 		for key, label in {"running": "Run", "pausing": "Pause", "aborting": "Abort"}.items():
 			widget = QQ(QToolButton, text=label, change=lambda x, key=key: ws.send({"action": "state", "state": key}))
 			self.statebuttons[key] = widget
 			self.statusbar.addWidget(widget)
+		
+		self.update_state("disconnected")
 
 		self.shortcuts()
 		self.createmenu()
@@ -601,6 +602,7 @@ class MainWindow(QMainWindow):
 				None,
 				QQ(QAction, parent=self, text="&Save current values as default", shortcut="Ctrl+D", tooltip="Save current configuration as default", change=lambda x: self.saveoptions()),
 				None,
+				QQ(QAction, parent=self, text="&Next Frequency", shortcut="Ctrl+N", tooltip="Go to next frequency while pausing", change=lambda x:ws.send({"action": "next_frequency"})),
 				QQ(QAction, parent=self, text="&Reconnect Experiment", tooltip="Reconnect the websocket to the experiment", change=lambda x: ws.start()),
 			),
 			"Info": (
