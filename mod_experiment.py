@@ -206,6 +206,7 @@ class Cdeque(deque):
 
 class Measurement(dict):
 	def __init__(self, dict_):
+		print(f"{dict_=}")
 		self.mode = dict_.get("general_mode")
 		modes = devices.modes
 		if self.mode not in modes:
@@ -436,7 +437,7 @@ class Measurement(dict):
 				self[key] = tmp
 
 	def save(self):
-		directory = os.path.join(homefolder, f"../../measurements_data/{self.get('general_molecule', 'Unknown')}/{str(datetime.now())[:10]}")
+		directory = os.path.join(homefolder, f"../data/{self.get('general_molecule', 'Unknown')}/{str(datetime.now())[:10]}")
 		if not os.path.exists(directory):
 			os.makedirs(directory, exist_ok=True)
 		
@@ -489,6 +490,7 @@ class Measurement(dict):
 class Experiment():
 	def __init__(self):
 		self._state = "ready"
+		self._pause_after_abort = False
 		self.send_all = print
 		self.queue = Cdeque(onchange=lambda queue: self.send_all({"action": "queue", "data": list(queue)}))
 		
@@ -528,9 +530,25 @@ class Experiment():
 				"state": self.state,
 			})
 
+	@property
+	def pause_after_abort(self):
+		return self._pause_after_abort
+
+	@pause_after_abort.setter
+	def pause_after_abort(self, value):
+		self._pause_after_abort = value
+		
+		self.send_all({
+			"action": "pause_after_abort",
+			"state": self.pause_after_abort,
+		})
+
 	def loop(self):
 		while True:
 			try:
+				if self.pause_after_abort:
+					while self.state == "aborting":
+						time.sleep(0.1)
 				self.current_measurement = self.queue.popleft()
 				self.state = "running"
 				self.current_measurement.run()
@@ -591,6 +609,11 @@ class Experiment():
 		self.queue.__delitem__(oldindex, silent=True)
 		self.queue.insert(newindex, tmp)
 
+	def pop_measurement(self):
+		current_measurement = self.current_measurement
+		if current_measurement:
+			self.add_measurement_first(current_measurement)
+
 class Websocket():
 	def __init__(self, experiment):
 		self.server = websockets.serve(self.main, URL, PORT)
@@ -617,7 +640,8 @@ class Websocket():
 		try:
 			self.listeners.add(websocket)
 			await websocket.send(json.dumps({"action": "state", "state": self.experiment.state}))
-			await websocket.send(json.dumps(({"action": "queue", "data": list(experiment.queue)})))
+			await websocket.send(json.dumps({"action": "queue", "data": list(experiment.queue)}))
+			await websocket.send(json.dumps({"action": "pause_after_abort", "state": self.experiment.pause_after_abort}))
 			
 			if self.experiment.current_measurement and self.experiment.current_measurement.basic_information:
 				await websocket.send(json.dumps(self.experiment.current_measurement.basic_information))
@@ -655,6 +679,12 @@ class Websocket():
 					elif action == "next_frequency":
 						with self.experiment.nextfrequency_lock:
 							self.experiment.nextfrequency = True
+					
+					elif action == "pop_measurement":
+						self.experiment.pop_measurement()
+					
+					elif action == "pause_after_abort":
+						self.experiment.pause_after_abort = not self.experiment.pause_after_abort
 					
 					elif action == "kill":
 						await asyncio.gather(*[listener.close() for listener in self.listeners])

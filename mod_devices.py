@@ -169,6 +169,10 @@ class SCPISynthesizer(Synthesizer, SCPIDevice):
 				# Set FM modulation signal
 				"SOUR:LFO":				"ON",
 				"SOUR:LFO1:FREQ":		str(dict_["lockin_fmfrequency"]) + "Hz",
+				
+				# @Luis: Remove after time signal testing
+				# "SOUR:FM1:SOUR":		"EXT1",
+				
 			})
 			
 			if dict_["general_mode"] == "dr_pufm":
@@ -360,15 +364,7 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 class ZurichInstrumentsMFLI(LockInAmplifier):
 	def __init__(self, visa_address):
 		LockInAmplifier.__init__(self)
-		self.daq = zi.ziDAQServer(visa_address, 8004)
-
-		# @Luis Just for testing
-		self.rate = 15E5
-		self.duration = 0.2
-		ts, ys = self.get_signal(self.rate, self.duration)
-		self.data = np.zeros((1000, len(ts)))
-		self.data[0] = ts
-		self.i = 1
+		self.daq = zi.ziDAQServer(visa_address, 8004, 6)
 
 	def check_errors(self):
 		pass
@@ -383,29 +379,38 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 		# External 10 MHz reference
 		self.daq.setInt('/dev4055/system/extclk', 1)
 		
-		if dict_["general_mode"] == "classic":
-			self.daq.setInt('/dev4055/demods/0/enable', 1)
-			self.daq.setInt('/dev4055/demods/1/enable', 1)
+		# @Luis: Remove after time signal testing
+		# if dict_["general_mode"] == "classic":
+			# self.daq.setInt('/dev4055/demods/0/enable', 1)
+			# self.daq.setInt('/dev4055/demods/1/enable', 1)
 		
-			self.daq.setInt('/dev4055/sigouts/0/on', 0)
-			self.daq.setInt('/dev4055/sigouts/0/enables/0', 0)
-			self.daq.setInt('/dev4055/sigouts/0/enables/1', 0)
-			self.daq.setInt('/dev4055/sigouts/0/enables/2', 0)
-			self.daq.setInt('/dev4055/sigouts/0/enables/3', 0)
+			# self.daq.setInt('/dev4055/sigouts/0/on', 0)
+			# self.daq.setInt('/dev4055/sigouts/0/enables/0', 0)
+			# self.daq.setInt('/dev4055/sigouts/0/enables/1', 0)
+			# self.daq.setInt('/dev4055/sigouts/0/enables/2', 0)
+			# self.daq.setInt('/dev4055/sigouts/0/enables/3', 0)
 			
-			self.daq.setInt('/dev4055/demods/0/oscselect', 0)
-			self.daq.setDouble('/dev4055/demods/0/harmonic', 2)
-			self.daq.setInt('/dev4055/demods/0/order', 1) # Order of low-pass filter
+			# self.daq.setInt('/dev4055/demods/0/oscselect', 0)
+			# self.daq.setDouble('/dev4055/demods/0/harmonic', 2)
+			# self.daq.setInt('/dev4055/demods/0/order', 1) # Order of low-pass filter
 			
-			self.daq.setInt('/dev4055/demods/1/oscselect', 0)
-			self.daq.setInt('/dev4055/demods/1/adcselect', 8) # Aux1 as input for demod1
-			self.daq.setInt('/dev4055/extrefs/0/enable', 1)
+			# self.daq.setInt('/dev4055/demods/1/oscselect', 0)
+			# self.daq.setInt('/dev4055/demods/1/adcselect', 8) # Aux1 as input for demod1
+			# self.daq.setInt('/dev4055/extrefs/0/enable', 1)
 
-			self.daq.setDouble('/dev4055/demods/0/timeconstant', tc)
+			# self.daq.setDouble('/dev4055/demods/0/timeconstant', tc)
+		
+		# @Luis: Remove after time signal testing
+		self.duration = tc
+		self.rate = 15E6
+		ts, ys = self.get_signal(self.rate, self.duration, timeoffset=False)
+		self.data = np.zeros((1000, len(ts) + 1))
+		self.data[0, 1:] = ts
+		self.i = 1
+		self.tmp_dict = dict_
 
-	def get_signal(self, samplefrequency, duration, records=1, timeout=2):
+	def get_signal(self, samplefrequency, duration, records=1, timeout=2, timeoffset=True):
 		sco = self.daq.scopeModule()
-		sco.execute()
 		
 		sti = int(-np.log2(samplefrequency / 60E6))
 		samplefrequency = 60E6 / 2**sti
@@ -432,26 +437,28 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 		# Set active channels (1 == only channel 1)
 		self.daq.setInt('/dev4055/scopes/0/channel', 1)
 	
-	
 		# Set Time Domain mode
 		sco.set('scopeModule/mode', 1)
 
 		# Set averager to None
 		sco.set('scopeModule/averager/weight', 1)
-
+		
+		# Only get single record
+		self.daq.setInt('/dev4055/scopes/0/single', 1)
 
 		sco.subscribe("/dev4055/scopes/0/wave")
 		self.daq.setInt("/dev4055/scopes/0/enable", 1)
 		self.daq.sync()
 
+		sco.execute()
 
-		st = time.perf_counter()
 		progress = 0
-		num_records=1
+		c_record = 0
+		st = time.perf_counter()
 
-		while (records < num_records) or (progress < 1.0):
+		while (c_record < records) or (progress < 1.0):
 			time.sleep(0.1)
-			records = sco.getInt("records")
+			c_record = sco.getInt("records")
 			progress = sco.progress()[0]
 			if (time.perf_counter() - st) > timeout:
 					raise ValueError(f"Recording the desired time signal took longer than the timeout of {timeout} s.")
@@ -465,9 +472,16 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 		dt = record[0]["dt"]
 		totalsamples = record[0]["totalsamples"]
 
+		# Time offset
+		timestamp = record[0]["timestamp"]
+		triggertimestamp = record[0]["triggertimestamp"]
+		clockbase = self.daq.getInt(f"/dev4055/clockbase")
+		time_offset = triggertimestamp / clockbase
+
 		ts = np.arange(0, totalsamples) * dt
-		ys = record[0]["wave"][0]
-		
+		if timeoffset:
+			ts += time_offset
+
 		result = [ts] + [record[0]["wave"][0] for record in data["/dev4055/scopes/0/wave"]]
 		return(result)
 	
@@ -486,21 +500,22 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 
 		return(self.get_intensity())
 	
-	# @Luis Just for testing
+	# @Luis: Remove after time signal testing
 	def measure_intensity(self):
-		counterstart = time.perf_counter()
-		while time.perf_counter() - counterstart < 0.01:
-			continue
-		
 		ts, ys = self.get_signal(self.rate, self.duration)
-		self.data[self.i] = ys
+		self.data[self.i, 0]  = ts[0]
+		self.data[self.i, 1:] = ys
 		self.i += 1
-		return(self.i)
+		res = self.get_intensity()
+		
+		return(res)
 	
 	def close(self):
-		# @Luis Just for testing
-		np.save(r"C:\Users\midascoins\Desktop\timesignal.npy", self.data[:self.i])
 		self.daq.disconnect()
+		
+		# @Luis: Remove after time signal testing
+		amp = self.tmp_dict["lockin_fmamplitude"]
+		np.save(f"..\\fmamp_{amp:.0f}.npy", self.data[:self.i])
 
 
 def connect(mdict, devicetype):
@@ -526,7 +541,23 @@ deviceclasses = {
 modes = ("classic", "dr", "dmdr", "dmdr_am", "dr_pufm", "tandem", "digital_dmdr")
 
 if __name__ == "__main__":
+		# import matplotlib.pyplot as plt
+		# lock_in = ZurichInstrumentsMFLI("192.168.23.55")
+		# probe = Agilent8257d("TCPIP::192.168.23.50::INST0::INSTR", 3)
+		# probe.set_frequency(79677.45)
+		
+		# amplitudes = (100, 200, 300, 400, 500, 1000)
+		# fig, axs = plt.subplots(len(amplitudes))
+		
+		# for ax, amplitude in zip(axs, amplitudes):
+			# probe.set_values({"SOUR:FM1:DEV": str(amplitude / probe.multiplication) + "kHz"})
+			# probe.connection.query(f":OUTP:STATe 1 {probe.EOL}*OPC?")
+			# results = lock_in.get_signal(60E6, 0.0005, timeoffset=False)
+			# probe.connection.query(f":OUTP:STATe 0 {probe.EOL}*OPC?")
+			
+			# ax.plot(results[0], results[1], label=f"Amp.: {amplitude:.0f} kHz")
+			# ax.legend()
+		
+		# plt.show()
+		
 		pass
-		# lock_in = SignalRecovery7265("GPIB::12")
-		# probe = agilent8257d(3,"TCPIP::192.168.23.48::INST0::INSTR")
-		# pump = rssmf100a(6,"TCPIP::192.168.23.51::INST0::INSTR")

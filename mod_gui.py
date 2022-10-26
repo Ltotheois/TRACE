@@ -560,6 +560,9 @@ class MainWindow(QMainWindow):
 		toggleaction_log.setShortcut("Shift+5")
 		toggleaction_log.setToolTip("Toggle the visibility of the Log window")
 		
+		self.pause_after_abort_action = QQ(QAction, parent=self, checkable=True, text="&Pause after aborting", tooltip="If experiment should pause after aborting measurement", change=lambda x:ws.send({"action": "pause_after_abort"}))
+
+		
 		actions_to_menus = {
 			"Files": (
 				QQ(QAction, parent=self, text="&Load Spectrum", change=lambda x: self.load_file("exp", add_files=True), tooltip="Replace Exp file(s)"),
@@ -601,6 +604,9 @@ class MainWindow(QMainWindow):
 				QQ(QAction, parent=self, text="&Load Queue", tooltip="Load queue from file", change=lambda x: self.queuewindow.loadqueue()),
 				None,
 				QQ(QAction, parent=self, text="&Save current values as default", shortcut="Ctrl+D", tooltip="Save current configuration as default", change=lambda x: self.saveoptions()),
+				None,
+				self.pause_after_abort_action,
+				QQ(QAction, parent=self, text="&Pop current measurement", tooltip="Put current measurement into queue", change=lambda x:ws.send({"action": "pop_measurement"})),
 				None,
 				QQ(QAction, parent=self, text="&Next Frequency", shortcut="Ctrl+N", tooltip="Go to next frequency while pausing", change=lambda x:ws.send({"action": "next_frequency"})),
 				QQ(QAction, parent=self, text="&Reconnect Experiment", tooltip="Reconnect the websocket to the experiment", change=lambda x: ws.start()),
@@ -774,6 +780,9 @@ class MainWindow(QMainWindow):
 		
 		self.stateindicator.setText("  " + state.capitalize() + "  ")
 		self.stateindicator.setStyleSheet(f"background-color: {color}")
+
+	def update_pause_after_abort(self, state):
+		self.pause_after_abort_action.setChecked(state)
 
 class PlotWidget(QGroupBox):
 	def __init__(self, parent):
@@ -1168,6 +1177,10 @@ class Websocket():
 		elif action == "uerror":
 			error = message["error"]
 			mw.notification(f"<span style='color:#ff0000;'>EXPERIMENT ERROR</span>: {error}")
+
+		elif action == "pause_after_abort":
+			state = message["state"]
+			mw.update_pause_after_abort(state)
 
 		else:
 			mw.notification(f"<span style='color:#ff0000;'>ERROR</span>: Received a message with the unknown action '{action}' {message=}.")
