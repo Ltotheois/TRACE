@@ -169,10 +169,6 @@ class SCPISynthesizer(Synthesizer, SCPIDevice):
 				# Set FM modulation signal
 				"SOUR:LFO":				"ON",
 				"SOUR:LFO1:FREQ":		str(dict_["lockin_fmfrequency"]) + "Hz",
-				
-				# @Luis: Remove after time signal testing
-				# "SOUR:FM1:SOUR":		"EXT1",
-				
 			})
 			
 			if dict_["general_mode"] == "dr_pufm":
@@ -315,6 +311,8 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 		# Problem is phase, which might get lost!
 		# self.connection.write("ADF 1")
 		self.check_errors()
+		dict_ = dict_.copy()
+
 
 		# Set special options
 		if dict_.get("static_lockinreadmag"):
@@ -379,35 +377,37 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 		# External 10 MHz reference
 		self.daq.setInt('/dev4055/system/extclk', 1)
 		
-		# @Luis: Remove after time signal testing
-		# if dict_["general_mode"] == "classic":
-			# self.daq.setInt('/dev4055/demods/0/enable', 1)
-			# self.daq.setInt('/dev4055/demods/1/enable', 1)
+		if dict_["general_mode"] == "classic":
+			self.daq.setInt('/dev4055/demods/0/enable', 1)
+			self.daq.setInt('/dev4055/demods/1/enable', 1)
 		
-			# self.daq.setInt('/dev4055/sigouts/0/on', 0)
-			# self.daq.setInt('/dev4055/sigouts/0/enables/0', 0)
-			# self.daq.setInt('/dev4055/sigouts/0/enables/1', 0)
-			# self.daq.setInt('/dev4055/sigouts/0/enables/2', 0)
-			# self.daq.setInt('/dev4055/sigouts/0/enables/3', 0)
+			self.daq.setInt('/dev4055/sigouts/0/on', 0)
+			self.daq.setInt('/dev4055/sigouts/0/enables/0', 0)
+			self.daq.setInt('/dev4055/sigouts/0/enables/1', 0)
+			self.daq.setInt('/dev4055/sigouts/0/enables/2', 0)
+			self.daq.setInt('/dev4055/sigouts/0/enables/3', 0)
 			
-			# self.daq.setInt('/dev4055/demods/0/oscselect', 0)
-			# self.daq.setDouble('/dev4055/demods/0/harmonic', 2)
-			# self.daq.setInt('/dev4055/demods/0/order', 1) # Order of low-pass filter
+			self.daq.setInt('/dev4055/demods/0/oscselect', 0)
+			self.daq.setDouble('/dev4055/demods/0/harmonic', 2)
+			self.daq.setInt('/dev4055/demods/0/order', 1) # Order of low-pass filter
 			
-			# self.daq.setInt('/dev4055/demods/1/oscselect', 0)
-			# self.daq.setInt('/dev4055/demods/1/adcselect', 8) # Aux1 as input for demod1
-			# self.daq.setInt('/dev4055/extrefs/0/enable', 1)
+			self.daq.setInt('/dev4055/demods/1/oscselect', 0)
+			self.daq.setInt('/dev4055/demods/1/adcselect', 8) # Aux1 as input for demod1
+			self.daq.setInt('/dev4055/extrefs/0/enable', 1)
 
-			# self.daq.setDouble('/dev4055/demods/0/timeconstant', tc)
+			self.daq.setDouble('/dev4055/demods/0/timeconstant', tc)
 		
 		# @Luis: Remove after time signal testing
-		self.duration = tc
-		self.rate = 15E6
-		ts, ys = self.get_signal(self.rate, self.duration, timeoffset=False)
-		self.data = np.zeros((1000, len(ts) + 1))
-		self.data[0, 1:] = ts
-		self.i = 1
-		self.tmp_dict = dict_
+		if True:
+			self.measure_intensity = self.measure_intensity_ts
+			self.close = self.close_ts
+			self.duration = tc
+			self.rate = 15E6
+			ts, ys = self.get_signal(self.rate, self.duration, timeoffset=False)
+			self.data = np.zeros((1000, len(ts) + 1))
+			self.data[0, 1:] = ts
+			self.i = 1
+			self.tmp_dict = dict_
 
 	def get_signal(self, samplefrequency, duration, records=1, timeout=2, timeoffset=True):
 		sco = self.daq.scopeModule()
@@ -501,7 +501,7 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 		return(self.get_intensity())
 	
 	# @Luis: Remove after time signal testing
-	def measure_intensity(self):
+	def measure_intensity_ts(self):
 		ts, ys = self.get_signal(self.rate, self.duration)
 		self.data[self.i, 0]  = ts[0]
 		self.data[self.i, 1:] = ys
@@ -512,8 +512,10 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 	
 	def close(self):
 		self.daq.disconnect()
-		
-		# @Luis: Remove after time signal testing
+	
+	# @Luis: Remove after time signal testing
+	def close_ts(self):
+		self.daq.disconnect()
 		amp = self.tmp_dict["lockin_fmamplitude"]
 		np.save(f"..\\fmamp_{amp:.0f}.npy", self.data[:self.i])
 

@@ -206,7 +206,6 @@ class Cdeque(deque):
 
 class Measurement(dict):
 	def __init__(self, dict_):
-		print(f"{dict_=}")
 		self.mode = dict_.get("general_mode")
 		modes = devices.modes
 		if self.mode not in modes:

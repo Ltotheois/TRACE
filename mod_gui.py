@@ -213,6 +213,8 @@ class MainWindow(QMainWindow):
 		self.shortcuts()
 		self.createmenu()
 		self.show()
+		
+		self.signalclass.websocketaction.connect(self.websocketaction)
 
 	@synchronized_d(locks["meas"])
 	def closeEvent(self, event):
@@ -283,6 +285,54 @@ class MainWindow(QMainWindow):
 			mw.loadmeasurement(measurement)
 
 		mw.plotwidget.set_data()
+	
+	def websocketaction(self, message):
+		action = message.get("action")
+		
+		if action == "measurement":
+			name = message["name"]
+			size = message["size"]
+			shape = message["shape"]
+			time = message["time"]
+			
+			self.plotwidget.connect_shared_memory(name, size, shape)
+			self.timeindicator.setText(f"Est. Time: {time:.0f} s")
+		
+		elif action == "queue":
+			queue = message["data"]
+			self.queuewindow.update_queue(queue)
+		
+		elif action == "state":
+			state = message["state"]
+			self.update_state(state)
+
+		elif action == "error":
+			error = message["error"]
+			self.notification(f"<span style='color:#eda711;'>EXPERIMENT WARNING</span>: {error}")
+		
+		elif action == "uerror":
+			error = message["error"]
+			self.notification(f"<span style='color:#ff0000;'>EXPERIMENT ERROR</span>: {error}")
+
+		elif action == "connection_error":
+			error = message["error"]
+			self.update_state("disconnected")
+			self.notification(f"<span style='color:#ff0000;'>CONNECTION ERROR</span>: {error}")
+		
+		elif action == "closed":
+			self.update_state("disconnected")
+			self.notification(f"<span style='color:#ff0000;'>CONNECTION CLOSED</span>")
+
+		elif action == "opened":
+			mw.notification(f"<span style='color:#29d93b;'>CONNECTION OPENED</span>")
+
+
+		else:
+			self.notification(f"<span style='color:#ff0000;'>ERROR</span>: Received a message with the unknown action '{action}' {message=}.")
+		
+		
+		
+
 	
 	def change_style(self, style=None):
 		styles = ["light", "dark", "custom"]
@@ -1151,50 +1201,19 @@ class Websocket():
 		
 	def on_message(self, ws, message):
 		message = json.loads(message)
-		action = message.get("action")
-		
-			
-		if action == "measurement":
-			name = message["name"]
-			size = message["size"]
-			shape = message["shape"]
-			time = message["time"]
-			mw.plotwidget.connect_shared_memory(name, size, shape)
-			mw.timeindicator.setText(f"Est. Time: {time:.0f} s")
-		
-		elif action == "queue":
-			queue = message["data"]
-			mw.queuewindow.update_queue(queue)
-		
-		elif action == "state":
-			state = message["state"]
-			mw.update_state(state)
-
-		elif action == "error":
-			error = message["error"]
-			mw.notification(f"<span style='color:#eda711;'>EXPERIMENT WARNING</span>: {error}")
-		
-		elif action == "uerror":
-			error = message["error"]
-			mw.notification(f"<span style='color:#ff0000;'>EXPERIMENT ERROR</span>: {error}")
-
-		elif action == "pause_after_abort":
-			state = message["state"]
-			mw.update_pause_after_abort(state)
-
-		else:
-			mw.notification(f"<span style='color:#ff0000;'>ERROR</span>: Received a message with the unknown action '{action}' {message=}.")
+		mw.signalclass.websocketaction.emit(message)
 
 	def on_error(self, ws, error):
-		mw.update_state("disconnected")
-		mw.notification(f"<span style='color:#ff0000;'>CONNECTION ERROR</span>: {error}")
+		message = {"action": "connection_error", "error": error}
+		mw.signalclass.websocketaction.emit(message)
 
 	def on_close(self, ws, close_status_code, close_msg):
-		mw.update_state("disconnected")
-		mw.notification(f"<span style='color:#ff0000;'>CONNECTION CLOSED</span>")
+		message = {"action": "closed"}
+		mw.signalclass.websocketaction.emit(message)
 
 	def on_open(self, ws):
-		mw.notification(f"<span style='color:#29d93b;'>CONNECTION OPENED</span>")
+		message = {"action": "opened"}
+		mw.signalclass.websocketaction.emit(message)
 
 	def send(self, message):
 		self.websocket.send(json.dumps(message))
@@ -1261,6 +1280,7 @@ class SignalClass(QObject):
 	writelog          = pyqtSignal(str)
 	writehover        = pyqtSignal(str)
 	notification      = pyqtSignal(str)
+	websocketaction   = pyqtSignal(dict)
 	updateconfig      = pyqtSignal(tuple)
 	updatemeasurement = pyqtSignal(tuple)
 	progressbar       = pyqtSignal(int)
@@ -1350,6 +1370,23 @@ class NotificationsBox(QWidget):
 		if not self.messages:
 			self.hide()
 		self.adjustSize()
+
+class QComboBox(QComboBox):
+	def __init__(self, *args, **kwargs):
+		result = super().__init__(*args, **kwargs)
+		self.currentTextChanged.connect(self.check_if_valid_option)
+		return(result)
+
+	def setCurrentText(self, text):
+		self.check_if_valid_option(text)
+		return(super().setCurrentText(text))
+
+	def check_if_valid_option(self, text):
+		items = [self.itemText(i) for i in range(self.count())]
+		if text not in items:
+			self.setStyleSheet("QComboBox {background-color: red;}")
+		else:
+			self.setStyleSheet("")
 
 class QBoolComboBox(QComboBox):
 	def __init__(self, *args, **kwargs):
