@@ -326,6 +326,9 @@ class MainWindow(QMainWindow):
 		elif action == "opened":
 			mw.notification(f"<span style='color:#29d93b;'>CONNECTION OPENED</span>")
 
+		elif action == "pause_after_abort":
+			state = message["state"]
+			self.update_pause_after_abort(state)
 
 		else:
 			self.notification(f"<span style='color:#ff0000;'>ERROR</span>: Received a message with the unknown action '{action}' {message=}.")
@@ -2825,6 +2828,7 @@ config_specs = {
 	"static_pumpdevice":					["MockDevice", str],
 	"static_pumpmultiplication":			[1, int],
 	"static_lockinreadmag":					[False, bool],
+	"static_skipreset":						[False, bool],
 	
 	"probe_power":							[10, int],
 	"probe_frequency":						[{

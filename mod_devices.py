@@ -139,13 +139,14 @@ class SCPISynthesizer(Synthesizer, SCPIDevice):
 			self.connection.write(f":OUTP:STATe {value}")
 	
 	def prepare_measurement(self, dict_, devicetype):
-		# Create repeatable default state
-		self.connection.write("*RST")
-		self.check_errors()
+		if not dict_["static_skipreset"]:
+			# Create repeatable default state
+			self.connection.write("*RST")
+			self.check_errors()
 		
-		# Set initial frequency to avoid damage
-		init_frequency = dict_[f"{devicetype}_frequency"].frequencies[0]
-		self.set_frequency(init_frequency)
+			# Set initial frequency to avoid damage
+			init_frequency = dict_[f"{devicetype}_frequency"].frequencies[0]
+			self.set_frequency(init_frequency)
 		
 		# Find startvalues
 		startvalues = {
