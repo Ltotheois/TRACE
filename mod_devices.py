@@ -145,7 +145,7 @@ class SCPISynthesizer(Synthesizer, SCPIDevice):
 			self.check_errors()
 		
 			# Set initial frequency to avoid damage
-			init_frequency = dict_[f"{devicetype}_frequency"].frequencies[0]
+			init_frequency = dict_[f"{devicetype}_frequency"].init_frequency
 			self.set_frequency(init_frequency)
 		
 		# Find startvalues

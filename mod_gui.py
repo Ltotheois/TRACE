@@ -1797,6 +1797,11 @@ class QueueWindow(EQDockWidget):
 						raise CustomError(f"Did not understand the header {header} in you list.")
 				
 				measurements.append(tmp_measurement)
+				
+				if i % mw.config["flag_maxmeasurementspermessage"] == 0:
+					ws.send({"action": "add_measurements", "measurements": measurements})
+					measurements = []
+					
 			ws.send({"action": "add_measurements", "measurements": measurements})
 		
 		elif key == "Add batch":
@@ -1826,6 +1831,10 @@ class QueueWindow(EQDockWidget):
 						
 						measurements.append(tmp_measurement)
 				
+						if i % mw.config["flag_maxmeasurementspermessage"] == 0:
+							ws.send({"action": "add_measurements", "measurements": measurements})
+							measurements = []
+					
 				ws.send({"action": "add_measurements", "measurements": measurements})
 		
 		# @Luis: Command to set autophase
@@ -2907,6 +2916,7 @@ config_specs = {
 	"flag_showmainplotposition":			[True, bool],
 	"flag_logmaxrows":						[10000, int],
 	"flag_updateplot":						[200, int],
+	"flag_maxmeasurementspermessage":		[200, int],
 
 	"commandlinedialog_width":				[500, int],
 	"commandlinedialog_height":				[250, int],

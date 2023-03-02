@@ -107,7 +107,8 @@ class Sweep(dict):
 			except ValueError as E:
 				raise ValueError(f"The center value has to be a positive numeric value. The value {dict_['center']} could not be converted to a positive numeric value.")
 				
-			frequencies = np.array((center,))
+			frequencies = lambda: np.array((center,))
+			init_frequency = center
 			
 		else:
 			
@@ -157,22 +158,31 @@ class Sweep(dict):
 			direction = dict_["direction"]
 			
 			if direction == "forth":
-				frequencies = np.linspace(*freq_range, points)
+				frequencies = lambda freq_range=freq_range, points=points: np.linspace(*freq_range, points)
+				init_frequency = freq_range[0]
 			elif direction == "back":
-				frequencies = np.linspace(*freq_range[::-1], points)
+				frequencies = lambda freq_range=freq_range, points=points: np.linspace(*freq_range[::-1], points)
+				init_frequency = freq_range[1]
 			elif direction == "forthback":
-				frequencies = np.concatenate((np.linspace(*freq_range, points), np.linspace(*freq_range[::-1], points)))
+				frequencies = lambda freq_range=freq_range, points=points: np.concatenate((np.linspace(*freq_range, points), np.linspace(*freq_range[::-1], points)))
+				init_frequency = freq_range[0]
 			elif direction == "backforth":
-				frequencies = np.concatenate((np.linspace(*freq_range[::-1], points), np.linspace(*freq_range, points)))
+				frequencies = lambda freq_range=freq_range, points=points: np.concatenate((np.linspace(*freq_range[::-1], points), np.linspace(*freq_range, points)))
+				init_frequency = freq_range[1]
 			elif direction == "fromcenter":
-				tmp_ltr = np.linspace(center, range_[1], int(points/2))
-				tmp_rtl = np.linspace(center, range_[0], int(points/2))
-				frequencies = np.empty((tmp_ltr.size + tmp_rtl.size -1), dtype=tmp_ltr.dtype)
-				frequencies[0::2] = tmp_ltr
-				frequencies[1::2] = tmp_rtl[1:]
+				def tmp(center, freq_range, points):
+					tmp_ltr = np.linspace(center, freq_range[1], int(points/2))
+					tmp_rtl = np.linspace(center, freq_range[0], int(points/2))
+					frequencies = np.empty((tmp_ltr.size + tmp_rtl.size -1), dtype=tmp_ltr.dtype)
+					frequencies[0::2] = tmp_ltr
+					frequencies[1::2] = tmp_rtl[1:]
+					return(frequencies)
+				frequencies = lambda freq_range=freq_range, points=points, center=center: tmp(center, freq_range, points)
+				init_frequency = center
 
 		super().__init__(**dict_, **kwargs)
 		self.frequencies = frequencies
+		self.init_frequency = init_frequency
 
 class Cdeque(deque):
 	def __init__(self, *args, onchange=print, **kwargs):
@@ -204,6 +214,10 @@ class Cdeque(deque):
 		if not kwargs.get("silent"):
 			self.onchange(self)
 
+	def extend(self, *args):
+		super().extend(*args)
+		self.onchange(self)
+
 class Measurement(dict):
 	def __init__(self, dict_):
 		self.mode = dict_.get("general_mode")
@@ -222,6 +236,7 @@ class Measurement(dict):
 			"static_probemultiplication*":		pint,
 			"static_lockinaddress*":			str,
 			"static_lockindevice*":				str,
+			"static_skipreset*":				str,
 			"probe_frequency*":					Sweep,
 			"probe_power*":						pint,
 			"lockin_fmfrequency*":				pfloat,
@@ -354,14 +369,14 @@ class Measurement(dict):
 	def spectrum_loop(self):
 		shm = None
 		try:
-			probe_frequencies = self["probe_frequency"].frequencies
+			probe_frequencies = self["probe_frequency"].frequencies()
 			probe_iterations = self["probe_frequency"]["iterations"]
 			
 			if (self.mode == "classic"):
 				pump_frequencies = [0]
 				pump_iterations = 1
 			else:
-				pump_frequencies = self["pump_frequency"].frequencies
+				pump_frequencies = self["pump_frequency"].frequencies()
 				pump_iterations = self["pump_frequency"]["iterations"]
 				
 				if self.mode == "digital_dmdr":
@@ -591,17 +606,17 @@ class Experiment():
 	def add_measurements(self, measurement_dicts):
 		errors = {}
 		measurements = []
+		
 		for i, measurement in enumerate(measurement_dicts):
 			try:
 				measurements.append(Measurement(measurement))
 			except (CustomError, CustomValueError) as E:
 				errors[i] = str(E)
-		
+
 		if errors:
 			raise CustomError(f"There were {len(errors)} measurements with errors. The errors read: {errors}.")
 		else:
-			for measurement in measurements:
-				self.queue.append(measurement)
+			self.queue.extend(measurements)
 	
 	def reorder_measurement(self, oldindex, newindex):
 		tmp = self.queue[oldindex]
