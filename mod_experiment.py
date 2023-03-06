@@ -236,7 +236,7 @@ class Measurement(dict):
 			"static_probemultiplication*":		pint,
 			"static_lockinaddress*":			str,
 			"static_lockindevice*":				str,
-			"static_skipreset*":				str,
+			"static_skipreset*":				bool,
 			"probe_frequency*":					Sweep,
 			"probe_power*":						pint,
 			"lockin_fmfrequency*":				pfloat,
