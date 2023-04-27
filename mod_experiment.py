@@ -388,8 +388,10 @@ class Measurement(dict):
 			n_probe, n_pump = len(probe_frequencies), len(pump_frequencies)
 			
 			n_total = pump_iterations * n_pump * probe_iterations * n_probe * point_iterations
-			size = n_total * 8 * 3
-			shape = (n_total, 3)
+			values_per_point = 4
+			bytes_per_float = 8
+			size = n_total * bytes_per_float * values_per_point
+			shape = (n_total, values_per_point)
 			shm = shared_memory.SharedMemory(create=True, size=size)
 			result = np.ndarray(shape=shape, buffer=shm.buf, dtype=np.float64)
 			result[:] = np.nan
@@ -409,8 +411,8 @@ class Measurement(dict):
 							self.probe.set_frequency(probe_frequency)
 							for point_iteration in range(point_iterations):
 
-								intensity = self.lockin.measure_intensity()
-								result[row] = probe_frequency, pump_frequency, intensity
+								x, y = self.lockin.measure_intensity()
+								result[row] = probe_frequency, pump_frequency, x, y
 								row += 1
 
 								while experiment.state != "running":
@@ -460,21 +462,23 @@ class Measurement(dict):
 
 	def save_spectrum(self, directory):
 		result = self.result
-		result_df = pd.DataFrame(result, columns=["probe", "pump", "intensity"])
-		pivot_df = result_df.pivot_table(index="probe", columns="pump", values="intensity")
+		result_df = pd.DataFrame(result, columns=["probe", "pump", "x", "y"])
+		pivot_df_x = result_df.pivot_table(index="probe", columns="pump", values="x", sort=True)
+		pivot_df_y = result_df.pivot_table(index="probe", columns="pump", values="y", sort=True)
 
-		intensities = pivot_df.values
-		probe_frequencies = pivot_df.index.values
-		pump_frequencies = pivot_df.columns.values
+		intensities_x = pivot_df_x.values
+		intensities_y = pivot_df_y.values
+		probe_frequencies = pivot_df_x.index.values
+		pump_frequencies = pivot_df_x.columns.values
 		
 		probe = (probe_frequencies.min() + probe_frequencies.max())/2
 		
-		for column, pump in zip(intensities.T, pump_frequencies):
+		for column_x, column_y, pump in zip(intensities_x.T, intensities_y.T, pump_frequencies):
 			tmp = f"_Pump@{pump:.2f}" if pump else ""
 			tmp2 = f"_ABORTED" if self.aborted else ""
 			filename = f"Probe@{probe:.2f}{tmp}{tmp2}_{self['general_datestart'].replace(':', '-')}"
 			filename = os.path.realpath(f"{directory}/{filename}")
-			np.savetxt(f"{filename}.dat", np.array((probe_frequencies, column)).T, delimiter="\t")
+			np.savetxt(f"{filename}.dat", np.array((probe_frequencies, column_x, column_y)).T, delimiter="\t")
 			self.save_meta(filename)
 
 	def save_meta(self, filename):

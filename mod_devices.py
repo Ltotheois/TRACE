@@ -29,13 +29,10 @@ class Synthesizer():
 			print(f"SETTING RF FREQUENCY TO {value}")
 
 class LockInAmplifier():
-	def __init__(self):
-		self.readmag = False
-	
 	def get_intensity(self):
 		if not SILENT:
 			print("GETTING INTENSITY")
-		return(float(round(time.time()))/10000)
+		return(float(round(time.time()))/10000, 0)
 	
 	def measure_intensity(self):
 		counterstart = time.perf_counter()
@@ -299,13 +296,13 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 				continue
 			results[state] = self.get_intensity()
 		
-		return(results[1] - results[0])
+		x, y = results[1][0] - results[0][0], results[1][1] - results[0][1]
+		return(x, y)
 	
 	def get_intensity(self):
-		if self.readmag:
-			return(float(self.connection.query("MAG.?")))
-		else:
-			return(float(self.connection.query("X.?")))
+		tmp = self.connection.query("XY.?")
+		x, y = [float(x) for x in tmp.split(',')]
+		return(x, y)
 		
 	def prepare_measurement(self, dict_, devicetype):
 		# Create repeatable default state
@@ -316,9 +313,6 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 
 
 		# Set special options
-		if dict_.get("static_lockinreadmag"):
-			self.readmag = True
-		
 		if dict_.get("general_mode") == "digital_dmdr":
 			self.measure_intensity = self.measure_intensity_dmdr_digital
 		
@@ -371,9 +365,6 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 	def prepare_measurement(self, dict_, devicetype):
 		tc = float(dict_["lockin_timeconstant"].replace("μs", "E-6").replace("ms", "E-3").replace("ks", "E3").replace("s", ""))
 		self.dttc = dict_["lockin_delaytime"]/1000 + tc
-		
-		if dict_.get("static_lockinreadmag"):
-			self.readmag = True
 		
 		# External 10 MHz reference
 		self.daq.setInt('/dev4055/system/extclk', 1)
@@ -488,11 +479,8 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 	
 	def get_intensity(self):
 		sample = self.daq.getSample("/dev4055/demods/0/sample")
-		if self.readmag:
-			x, y = sample["x"][0], sample["y"][0]
-			return((x**2 + y**2)**0.5)
-		else:
-			return(sample["x"][0])
+		x, y = sample["x"][0], sample["y"][0]
+		return(x, y)
 	
 	def measure_intensity(self):
 		counterstart = time.perf_counter()

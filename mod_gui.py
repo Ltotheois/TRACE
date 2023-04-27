@@ -955,7 +955,7 @@ class PlotWidget(QGroupBox):
 			else:
 				return(self.meas_array)
 		else:
-			return np.ndarray((0,3), dtype=np.float64)
+			return np.ndarray((0, 4), dtype=np.float64)
 
 	def set_position(self, value):
 		mw.config["plot_autoscale"] = False
@@ -1097,7 +1097,11 @@ class PlotWidget(QGroupBox):
 			return
 		ax = self.ax
 		autoscale = mw.config["plot_autoscale"]
-		xs, ys = meas_data[:, 0], meas_data[:, 2]
+		
+		if mw.config["plot_showmagnitude"]:
+			xs, ys = meas_data[:, 0], np.sqrt((meas_data[:, 2])**2 + (meas_data[:, 3])**2)
+		else:
+			xs, ys = meas_data[:, 0], meas_data[:, 2]
 		
 		if autoscale:
 			self.freqrange = (xs.min(), xs.max()) if len(xs) else (0, 10)
@@ -1838,7 +1842,6 @@ class QueueWindow(EQDockWidget):
 				ws.send({"action": "add_measurements", "measurements": measurements})
 		
 		# @Luis: Command to set autophase
-		# @Luis: Maybe also option to measure x or magnitude
 	
 	def update_queue(self, queue):
 		self.queue = queue
@@ -2836,7 +2839,6 @@ config_specs = {
 	"static_pumpaddress":					["", str],
 	"static_pumpdevice":					["MockDevice", str],
 	"static_pumpmultiplication":			[1, int],
-	"static_lockinreadmag":					[False, bool],
 	"static_skipreset":						[False, bool],
 	
 	"probe_power":							[10, int],
@@ -2898,6 +2900,7 @@ config_specs = {
 	"plot_bins":							[4000, int],
 	"plot_skipbinning":						[1000, int],
 	"plot_expasstickspectrum":				[False, bool],
+	"plot_showmagnitude":					[False, bool],
 
 	"flag_qns":								[3, int],
 	"flag_automatic_draw":					[True, bool],
