@@ -1,4 +1,4 @@
-#!../venv/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 # Author: Luis Bonah
@@ -18,13 +18,13 @@ from collections import deque
 from datetime import datetime
 import configparser
 
-homefolder = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, homefolder)
-
-import mod_devices as devices
-import mod_pumpcell
+from . import mod_devices as devices
+from . import mod_pumpcell as pumpcell
 
 URL, PORT = "localhost", 8112
+
+homefolder = os.path.join(os.path.expanduser("~"), "TRACE")
+os.makedirs(homefolder, exist_ok=True)
 
 class Tee(object):
 	def __init__(self, name, mode, stderr=False):
@@ -453,7 +453,7 @@ class Measurement(dict):
 				self[key] = tmp
 
 	def save(self):
-		directory = os.path.join(homefolder, f"../data/{self.get('general_molecule', 'Unknown')}/{str(datetime.now())[:10]}")
+		directory = os.path.join(homefolder, f"data/{self.get('general_molecule', 'Unknown')}/{str(datetime.now())[:10]}")
 		if not os.path.exists(directory):
 			os.makedirs(directory, exist_ok=True)
 		
@@ -732,13 +732,23 @@ class Websocket():
 		
 		finally:
 			self.listeners.remove(websocket)
-	
-if __name__ == "__main__":
-	stdout = Tee(homefolder + "/../logs/EXPERIMENT.txt", "a+", False)
-	stderr = Tee(homefolder + "/../logs/EXPERIMENT.err", "a+", True)
+
+def start():
+	global experiment
+	global server
+	global stderr
+	global stdout
+
+	log_folder = os.path.join(homefolder, "logs")
+	os.makedirs(log_folder, exist_ok=True)
+	stdout = Tee(os.path.join(log_folder, "EXPERIMENT.txt"), "a+", False)
+	stderr = Tee(os.path.join(log_folder, "EXPERIMENT.err"), "a+", True)
 	
 	experiment = Experiment()
 	server = Websocket(experiment)
 	
 	experiment.start()
 	server.start()
+
+if __name__ == "__main__":
+	start()

@@ -54,9 +54,9 @@ import pyckett
 from multiprocessing import shared_memory
 from scipy import optimize, special, signal
 
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtGui import *
+from PyQt6.QtCore import *
+from PyQt6.QtWidgets import *
+from PyQt6.QtGui import *
 
 import matplotlib
 from matplotlib import style, figure
@@ -67,9 +67,7 @@ warnings.simplefilter('ignore', np.RankWarning)
 
 QLocale.setDefault(QLocale("en_EN"))
 
-homefolder = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, homefolder)
-import mod_devices as devices
+from . import mod_devices as devices
 
 
 ##
@@ -134,12 +132,19 @@ class MainWindow(QMainWindow):
 		mw = self
 		
 		super().__init__(parent)
-		self.setFocusPolicy(Qt.StrongFocus)
+		self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 		self.setWindowTitle(APP_TAG)
 		self.setAcceptDrops(True)
 
 		try:
-			app.setWindowIcon(QIcon(customfile(".svg")))
+			possible_folders = [os.path.dirname(os.path.realpath(__file__)), os.getcwd()]
+			for folder in possible_folders:
+				iconpath = os.path.join(folder, "TRACE.svg")
+				if os.path.isfile(iconpath):
+					icon = QIcon(iconpath)
+					break
+				
+			main.app.setWindowIcon(QIcon(iconpath))
 			import ctypes
 			ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_TAG)
 		except Exception as E:
@@ -332,99 +337,6 @@ class MainWindow(QMainWindow):
 
 		else:
 			self.notification(f"<span style='color:#ff0000;'>ERROR</span>: Received a message with the unknown action '{action}' {message=}.")
-		
-		
-		
-
-	
-	def change_style(self, style=None):
-		styles = ["light", "dark", "custom"]
-		if style == None:
-			self.config["layout_theme"] = styles[(styles.index(self.config["layout_theme"])+1)%len(styles)]
-		elif style in styles:
-			self.config["layout_theme"] = style
-		else:
-			self.config["layout_theme"] = styles[0]
-
-		if self.config["layout_owntheme"] == {} and self.config["layout_theme"] == "custom":
-			self.config["layout_theme"] = "light"
-
-		if self.config["layout_theme"] == "light":
-			palette = app.style().standardPalette()
-			mplstyles = ("default", "white")
-
-		elif self.config["layout_theme"] == "dark" or self.config["layout_theme"] == "custom":
-			colors = {
-				"window":				QColor(53, 53, 53),
-				"windowText":			QColor(255, 255, 255),
-				"base":					QColor(35, 35, 35),
-				"alternateBase":		QColor(53, 53, 53),
-				"toolTipBase":			QColor(25, 25, 25),
-				"toolTipText":			QColor(255, 255, 255),
-				"placeholderText":		QColor(100, 100, 100),
-				"text":					QColor(255, 255, 255),
-				"button":				QColor(53, 53, 53),
-				"buttonText":			QColor(255, 255, 255),
-				"brightText":			Qt.red,
-				"light":				QColor(255, 255, 255),
-				"midlight":				QColor(200, 200, 200),
-				"mid":					QColor(150, 150, 150),
-				"dark":					QColor(50, 50, 50),
-				"shadow":				QColor(0, 0, 0),
-				"highlight":			QColor(42, 130, 218),
-				"highlightedText":		 QColor(35, 35, 35),
-				"link":					QColor(42, 130, 218),
-				"linkVisited":			QColor(42, 130, 218),
-
-				"disabledButtonText":	Qt.darkGray,
-				"disabledWindowText":	Qt.darkGray,
-				"disabledText":			Qt.darkGray,
-				"disabledLight":		QColor(53, 53, 53),
-
-				"mplstyles":			("dark_background", "black"),
-			}
-
-			if self.config["layout_theme"] == "custom":
-				colors.update(self.config["layout_owntheme"])
-
-			tmp_dict = {
-				"window":				(QPalette.Window,),
-				"windowText":			(QPalette.WindowText,),
-				"base":					(QPalette.Base,),
-				"alternateBase":		(QPalette.AlternateBase,),
-				"toolTipBase":			(QPalette.ToolTipBase,),
-				"toolTipText":			(QPalette.ToolTipText,),
-				"placeholderText":		(QPalette.PlaceholderText,),
-				"text":					(QPalette.Text,),
-				"button":				(QPalette.Button,),
-				"buttonText":			(QPalette.ButtonText,),
-				"brightText":			(QPalette.BrightText,),
-				"light":				(QPalette.Light,),
-				"midlight":				(QPalette.Midlight,),
-				"dark":					(QPalette.Dark,),
-				"mid":					(QPalette.Mid,),
-				"shadow":				(QPalette.Shadow,),
-				"highlight":			(QPalette.Highlight,),
-				"highlightedText":		(QPalette.HighlightedText,),
-				"link":					(QPalette.Link,),
-				"linkVisited":			(QPalette.LinkVisited,),
-
-				"disabledButtonText":	(QPalette.Disabled, QPalette.ButtonText),
-				"disabledWindowText":	(QPalette.Disabled, QPalette.WindowText),
-				"disabledText":			(QPalette.Disabled, QPalette.Text),
-				"disabledLight":		(QPalette.Disabled, QPalette.Light),
-			}
-
-			mplstyles = colors["mplstyles"]
-			palette = QPalette()
-			for key, values in tmp_dict.items():
-				palette.setColor(*values, colors[key])
-
-
-		app.setPalette(palette)
-		matplotlib.style.use(mplstyles[0])
-		self.plotwidget.fig.patch.set_facecolor(mplstyles[1])
-		self.plotwidget.fig.patch.set_facecolor(mplstyles[1])
 	
 	def get_measurement_data(self):
 		key_prefixes = ("general", "static", "lockin", "probe", "pump", "refill")
@@ -632,8 +544,6 @@ class MainWindow(QMainWindow):
 				QQ(QAction, parent=self, text="&Quit", change=self.close, tooltip="Close the program"),
 			),
 			"View": (
-				QQ(QAction, parent=self, text="&Change Style", tooltip="Change between light, dark and custom theme", change=lambda x: self.change_style()),
-				None,
 				QQ(QAction, "layout_mpltoolbar", parent=self, text="&MPL Toolbar", shortcut="Shift+1", tooltip="Show or hide toolbar to edit or save the plot canvas", checkable=True),
 				QQ(QAction, parent=self, text="&Hover Window", shortcut="Shift+6", tooltip="Show the hover window", change=lambda x: self.hoverwindow.show() and self.hoverwindow.activateWindow()),
 				QQ(QAction, parent=self, text="&Config Window", shortcut="Shift+7", tooltip="Show the config window", change=lambda x: self.configwindow.show() and self.configwindow.activateWindow()),
@@ -876,7 +786,7 @@ class PlotWidget(QGroupBox):
 			mw.config.register("flag_showmainplotcontrols", lambda button=button: button.setVisible(mw.config["flag_showmainplotcontrols"]))
 		
 		self.toplabel = QQ(QLabel, text="", wordwrap=False)
-		self.indicator = QQ(QLabel, text="Ready", textFormat=Qt.RichText)
+		self.indicator = QQ(QLabel, text="Ready", textFormat=Qt.TextFormat.RichText)
 		self.working = queue.Queue()
 		mw.signalclass.setindicator.connect(self.indicator.setText)
 		
@@ -1318,11 +1228,11 @@ class NotificationsBox(QWidget):
 		self.bg_color = QColor("#a5aab3")
 		self.messages = []
 		self.setWindowFlags(
-			Qt.Window | Qt.Tool | Qt.FramelessWindowHint |
-			Qt.WindowStaysOnTopHint | Qt.X11BypassWindowManagerHint)
+			Qt.WindowType.Window | Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
+			Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.X11BypassWindowManagerHint)
 
-		self.setAttribute(Qt.WA_NoSystemBackground, True)
-		self.setAttribute(Qt.WA_TranslucentBackground, True)
+		self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+		self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
 		self.setMinimumHeight(80)
 		self.setMinimumWidth(300)
@@ -1336,8 +1246,8 @@ class NotificationsBox(QWidget):
 			background-color: #bf29292a;
 		""")
 
-		self._desktop = QApplication.instance().desktop()
-		startPos = QPoint(self._desktop.screenGeometry().width() - self.width() - 10, 10)
+		self._desktop = QApplication.instance().primaryScreen()
+		startPos = QPoint(self._desktop.geometry().width() - self.width() - 10, 10)
 		self.move(startPos)
 
 	def paintEvent(self, event=None):
@@ -1419,12 +1329,12 @@ class QSpinBox(QSpinBox):
 		super().__init__(*args, **kwargs)
 		# AdaptiveDecimalStepType is not implemented in earlier versions of PyQt5
 		try:
-			self.setStepType(QAbstractSpinBox.AdaptiveDecimalStepType)
+			self.setStepType(QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
 		except:
 			pass
 
 	def setSingleStep(self, value):
-		self.setStepType(QAbstractSpinBox.DefaultStepType)
+		self.setStepType(QAbstractSpinBox.StepType.DefaultStepType)
 		super().setSingleStep(value)
 
 	def setValue(self, value):
@@ -1443,21 +1353,19 @@ class QDoubleSpinBox(QDoubleSpinBox):
 		self.setDecimals(20)
 		# AdaptiveDecimalStepType is not implemented in earlier versions of PyQt5
 		try:
-			self.setStepType(QAbstractSpinBox.AdaptiveDecimalStepType)
+			self.setStepType(QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
 		except:
 			pass
 
 	def setSingleStep(self, value):
-		self.setStepType(QAbstractSpinBox.DefaultStepType)
+		self.setStepType(QAbstractSpinBox.StepType.DefaultStepType)
 		super().setSingleStep(value)
 
 	def textFromValue(self, value):
-		# if value and abs(np.log10(abs(value))) > 5:
-			# return(f"{value:.2e}")
-		# else:
-			# return(f"{value:.10f}".rstrip("0").rstrip("."))
-		return(f"{value:.10f}".rstrip("0").rstrip("."))
-
+		if value and abs(np.log10(abs(value))) > 5:
+			return(f"{value:.2e}")
+		else:
+			return(f"{value:.10f}".rstrip("0").rstrip("."))
 
 	def valueFromText(self, text):
 		return(np.float64(text))
@@ -1470,14 +1378,14 @@ class QDoubleSpinBox(QDoubleSpinBox):
 	def validate(self, text, position):
 		try:
 			np.float64(text)
-			return(2, text, position)
+			return(QValidator.State(2), text, position)
 		except ValueError:
 			if text.strip() in ["+", "-", ""]:
-				return(1, text, position)
+				return(QValidator.State(1), text, position)
 			elif re.match(r"^[+-]?\d+\.?\d*[Ee][+-]?\d?$", text):
-				return(1, text, position)
+				return(QValidator.State(1), text, position)
 			else:
-				return(0, text, position)
+				return(QValidator.State(0), text, position)
 
 	def fixup(self, text):
 		tmp = re.search(r"[+-]?\d+\.?\d*", text)
@@ -1714,7 +1622,7 @@ class EQDockWidget(QDockWidget):
 		super().__init__(parent)
 		self.setObjectName(self.__class__.__name__)
 
-		parent.addDockWidget(self.dockpos, self)
+		parent.addDockWidget(Qt.DockWidgetArea(self.dockpos), self)
 		QShortcut("Esc", self).activated.connect(self.close)
 
 class QueueWindow(EQDockWidget):
@@ -1743,13 +1651,13 @@ class QueueWindow(EQDockWidget):
 		self.listwidgetmodel.rowsMoved.connect(self.rowsmoved)
 		
 		self.layout.addWidget(self.listwidget)
-		self.listwidget.setDragDropMode(QAbstractItemView.InternalMove)
-		self.listwidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+		self.listwidget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+		self.listwidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 		self.listwidget.setFont(QFont("Courier"))
 	
 		self.queue = []
 	
-		QShortcut(QKeySequence(Qt.Key_Delete), self).activated.connect(self.deleterow);
+		QShortcut(QKeySequence(Qt.Key.Key_Delete), self).activated.connect(self.deleterow);
 
 	def deleterow(self, *args, **kwargs):
 		indices = [x.row() for x in self.listwidget.selectedIndexes()]
@@ -2139,14 +2047,14 @@ class ConfigWindow(EQWidget):
 
 		self.updating = True
 
-		scrollarea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-		scrollarea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+		scrollarea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+		scrollarea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 		scrollarea.setWidgetResizable(True)
 
 		tmp_layout = QHBoxLayout()
 		tmp_layout.addWidget(QQ(QPushButton, text="Save as default", change=lambda: mw.saveoptions()))
 		completer = QCompleter(mw.config.keys())
-		completer.setCaseSensitivity(Qt.CaseInsensitive)
+		completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
 		tmp_layout.addWidget(QQ(QLineEdit, placeholder="Search", completer=completer, change=lambda x: self.search(x)))
 		tmp_layout.addStretch(1)
 
@@ -2347,8 +2255,8 @@ class FileWindow(EQWidget):
 
 			filesgrid = QGridLayout()
 
-			scrollarea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-			scrollarea.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+			scrollarea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+			scrollarea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 			scrollarea.setWidgetResizable(True)
 			scrollarea.setWidget(widget)
 			widget.setLayout(filesgrid)
@@ -2485,7 +2393,7 @@ class CreditsWindow(EQWidget):
 
 		global CREDITSSTRING
 		layout = QVBoxLayout()
-		layout.addWidget(QQ(QLabel, text=CREDITSSTRING, align=Qt.AlignCenter, wordwrap=True, minHeight=300, minWidth=500))
+		layout.addWidget(QQ(QLabel, text=CREDITSSTRING, align=Qt.AlignmentFlag.AlignCenter, wordwrap=True, minHeight=300, minWidth=500))
 		self.setLayout(layout)
 
 
@@ -2777,10 +2685,13 @@ def except_hook(cls, exception, traceback):
 		pass
 
 def customfile(extension):
-	# Using the folder the python file is in causes problems with the Exe file
-	# as it unpacks the python stuff into a temporary folder
-	# return(os.path.join(os.path.dirname(os.path.realpath(__file__)), f"{APP_TAG}{extension}"))
-	return(f"..\logs\{APP_TAG}{extension}")
+	home = os.path.expanduser("~")
+	customfolder = os.path.join(home, "TRACE")
+	
+	if not os.path.isdir(customfolder):
+		os.mkdir(customfolder)
+
+	return(os.path.join(customfolder, APP_TAG + extension))
 
 def breakpoint(ownid, lastid):
 	if ownid != lastid:
@@ -2801,6 +2712,9 @@ def rgbt_to_trgb(color):
 	if len(color) == 9:
 		color = f"#{color[-2:]}{color[1:-2]}"
 	return(color)
+
+def send_mail_to_author():
+	webbrowser.open(f"mailto:bonah@ph1.uni-koeln.de?subject={APP_TAG}")
 
 def restart():
 	ws.close()
@@ -2875,9 +2789,7 @@ config_specs = {
 	"refill_thresholdpressure": 			[0, float],
 	"refill_emptypressure": 				[0, float],
 	"refill_force": 						[False, bool],
-	
-	"layout_theme":							["light", str],
-	"layout_owntheme":						[{}, dict],
+
 	"layout_mpltoolbar":					[False, bool],
 
 	"color_exp":							["#000000", Color],
@@ -2934,7 +2846,11 @@ config_specs = {
 	"files_lin":							[{}, dict],
 }
 
-if __name__ == '__main__':
+def start():
+	global mw
+	global ws
+	global app
+	
 	sys.excepthook = except_hook
 	threading.excepthook = lambda args: except_hook(*args[:3])
 
@@ -2942,4 +2858,7 @@ if __name__ == '__main__':
 	app.setStyle("Fusion")
 	mw = MainWindow()
 	ws = Websocket()
-	sys.exit(app.exec_())
+	sys.exit(app.exec())
+
+if __name__ == '__main__':
+	start()

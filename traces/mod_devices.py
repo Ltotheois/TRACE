@@ -1,4 +1,4 @@
-#!../venv/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 # Author: Luis Bonah
@@ -9,6 +9,8 @@ import numpy as np
 import zhinst.ziPython as zi
 
 SILENT = True
+# @Luis: Remove after Timesignal Testing
+TIMESINGAL = False
 
 class CustomError(Exception):
 	pass
@@ -390,7 +392,7 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 			self.daq.setDouble('/dev4055/demods/0/timeconstant', tc)
 		
 		# @Luis: Remove after time signal testing
-		if True:
+		if TIMESINGAL:
 			self.measure_intensity = self.measure_intensity_ts
 			self.close = self.close_ts
 			self.duration = tc
