@@ -11,7 +11,7 @@ authors = [
 description = "TRACE (Tool for Remotely Accessing and Controlling Experiments) allows to control simple absorption experiments"
 readme = "README.md"
 requires-python = ">=3.7"
-dependencies = ['numpy', 'pandas', 'matplotlib', 'wrapt', 'pyckett', 'scipy', 'PyQt6', 'pyvisa', 'websockets', 'zhinst', 'serial']
+dependencies = ['numpy', 'pandas', 'matplotlib', 'wrapt', 'pyckett', 'scipy', 'PyQt6', 'pyvisa', 'websockets', 'websocket-client', 'zhinst', 'pyserial']
 classifiers = [
 	"Programming Language :: Python :: 3",
 	"License :: OSI Approved :: GNU General Public License v3 (GPLv3)",

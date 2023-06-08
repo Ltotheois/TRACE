@@ -298,7 +298,7 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 				continue
 			results[state] = self.get_intensity()
 		
-		x, y = results[1][0] - results[0][0], results[1][1] - results[0][1]
+		x, y = results[0][0] - results[1][0], results[0][1] - results[1][1]
 		return(x, y)
 	
 	def get_intensity(self):

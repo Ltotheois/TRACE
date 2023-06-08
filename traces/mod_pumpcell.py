@@ -143,7 +143,7 @@ def measure_pressure(device):
 	if not response:
 		raise CustomError("Could not read pressure. Response was empty.")
 	else:
-		channel, unit, value = response.split(":")
+		channel, unit, value = response.split(":")[:3]
 		unit_factor = pressure_translation[unit.lower().strip()]
 		pressure = np.float64(value)*unit_factor
 		return(pressure/1000)
