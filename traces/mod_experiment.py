@@ -325,7 +325,7 @@ class Measurement(dict):
 				self.pump   = devices.connect(self, "pump")
 
 			if self.refillcell:
-				rc, rm = mod_pumpcell.main({
+				rc, rm = pumpcell.main({
 					"pressure_min"				: self["refill_minpressure"] / 1e6,
 					"pressure_max"				: self["refill_maxpressure"] / 1e6,
 					"pressure_threshold"		: self["refill_thresholdpressure"] / 1e6,
@@ -445,7 +445,7 @@ class Measurement(dict):
 
 	def pressure_wrapper(self, key):
 		if self.readpressure:
-			tmp = mod_pumpcell.measure_pressure_wrapper(self["refill_address"])
+			tmp = pumpcell.measure_pressure_wrapper(self["refill_address"])
 			if isinstance(tmp, Exception):
 				server.send_all({"action": "error", "error": f"Could not read pressure. Error reads {tmp}."})
 				self[key] = None

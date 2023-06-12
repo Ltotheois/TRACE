@@ -857,15 +857,17 @@ class PlotWidget(QGroupBox):
 	
 	@synchronized_d(locks["meas"])
 	def get_meas_data(self, filtered=True):
-		if self.meas_array is not None:
-			if filtered:
-				index_ = np.isnan(self.meas_array[:, -1]).argmax()
-				mw.signalclass.progressbar.emit(int(index_ / self.meas_array.shape[0] * 100))
-				return(self.meas_array[:index_])
-			else:
-				return(self.meas_array)
-		else:
+		if self.meas_array is None:
 			return np.ndarray((0, 4), dtype=np.float64)
+		
+		if filtered:
+			mask = ~np.isnan(self.meas_array[:, -1])
+			index_ = np.sum(mask)
+			
+			mw.signalclass.progressbar.emit(int(index_ / self.meas_array.shape[0] * 100))
+			return(self.meas_array[mask])
+		else:
+			return(self.meas_array)
 
 	def set_position(self, value):
 		mw.config["plot_autoscale"] = False
@@ -1003,6 +1005,7 @@ class PlotWidget(QGroupBox):
 	@synchronized_d(locks["axs"])
 	def set_meas_data(self, standalone=True):
 		meas_data = self.get_meas_data()
+		
 		if mw.tabwidget.currentIndex():
 			return
 		ax = self.ax
@@ -1718,7 +1721,7 @@ class QueueWindow(EQDockWidget):
 		
 		elif key == "Add batch":
 			dialog = BatchDialog()
-			dialog.exec_()
+			dialog.exec()
 
 			if dialog.result() == 1:
 				result = dialog.save()
@@ -2435,7 +2438,7 @@ class ConsoleDialog(QDialog):
 	def add_tab(self, title="Command", command=""):
 		textarea = QQ(QPlainTextEdit, value=command)
 		cursor = textarea.textCursor()
-		cursor.movePosition(QTextCursor.End)
+		cursor.movePosition(QTextCursor.MoveOperation.End)
 		textarea.setTextCursor(cursor)
 		self.tabs.addTab(textarea, title)
 
@@ -2472,7 +2475,7 @@ class ConsoleDialog(QDialog):
 	def run(showdialog=True):
 		if showdialog:
 			dialog = ConsoleDialog()
-			dialog.exec_()
+			dialog.exec()
 			if dialog.result() != 1:
 				return
 
