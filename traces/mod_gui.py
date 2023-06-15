@@ -1365,10 +1365,11 @@ class QDoubleSpinBox(QDoubleSpinBox):
 		super().setSingleStep(value)
 
 	def textFromValue(self, value):
-		if value and abs(np.log10(abs(value))) > 5:
-			return(f"{value:.2e}")
-		else:
-			return(f"{value:.10f}".rstrip("0").rstrip("."))
+		# if value and abs(np.log10(abs(value))) > 5:
+			# return(f"{value:.2e}")
+		# else:
+			# return(f"{value:.10f}".rstrip("0").rstrip("."))
+		return(f"{value:.10f}".rstrip("0").rstrip("."))
 
 	def valueFromText(self, text):
 		return(np.float64(text))
@@ -1727,22 +1728,31 @@ class QueueWindow(EQDockWidget):
 				result = dialog.save()
 				measurements = []
 				
-				for i_pump in range(result["pump"]):
-					for i_probe in range(result["probe"]):
+				for i_pump in range(result["pump"]["measurements"]):
+					for i_probe in range(result["probe"]["measurements"]):
 						tmp_measurement = copy.deepcopy(measurement)
 						
 						for source in ("probe", "pump"):
-							i = i_pump if source == "pump" else i_probe
-							tmp_dict = tmp_measurement[f"{source}_frequency"]
+							new_values = result[source]
 							
-							if tmp_dict.get("mode") != "fixed":
-								if "center" in tmp_dict and "span" in tmp_dict:
-									tmp_dict["center"] += tmp_dict["span"] * i
-								else:
-									start, stop = tmp_dict["start"], tmp_dict["stop"]
-									span  = stop - start
-									tmp_dict["start"] += span * i
-									tmp_dict["stop"] += span * i
+							i = i_pump if source == "pump" else i_probe
+							values = tmp_measurement[f"{source}_frequency"]
+							
+							if "center" in new_values and "span" in new_values:
+								for x in ["start", "stop"]:
+									if x in values:
+										del values[x]
+								
+								values["center"] = new_values["center"] + i * new_values["span"]
+								values["span"] = new_values["span"]
+							elif "start" in new_values and "stop" in new_values:
+								for x in ["center", "span"]:
+									if x in values:
+										del values[x]
+								
+								span = new_values["stop"] - new_values["start"]
+								values["start"] = new_values["start"] + i * span
+								values["stop"] = new_values["stop"] + i * span
 						
 						measurements.append(tmp_measurement)
 				
@@ -1895,7 +1905,7 @@ class BatchDialog(QDialog):
 		layout.setRowStretch(current_row, 2)
 		current_row += 1
 		
-		buttons = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+		buttons = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
 		buttonBox = QDialogButtonBox(buttons)
 		buttonBox.setCenterButtons(True)
 		buttonBox.accepted.connect(lambda: self.predone(1))
@@ -1920,16 +1930,27 @@ class BatchDialog(QDialog):
 				widgets["stoptotal"].setValue(stop_total)
 
 	def save(self):
-		result = {}
+		results = {}
 		for source in ("probe", "pump"):
+			results[source] = {}
+			
 			widgets = self.widgets.get(source)
 			if widgets:
-				measurements = widgets["measurements"].value()
+				results[source]["measurements"] = widgets["measurements"].value()
+				
+				if "center" in widgets and "span" in widgets:
+					center, span = widgets["center"].value(), widgets["span"].value()
+					results[source]["center"] = center
+					results[source]["span"] = span
+				else:
+					start, stop = widgets["start"].value(), widgets["stop"].value()
+					results[source]["start"] = start
+					results[source]["stop"] = stop
+				
 			else:
-				measurements = 1
-			result[source] = measurements
+				results[source]["measurements"] = 1
 		
-		return(result)
+		return(results)
 
 	def predone(self, val):
 		mw.config["batchdialog_width"] =	self.geometry().width()
