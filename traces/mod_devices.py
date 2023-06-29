@@ -100,9 +100,9 @@ class SCPIDevice():
 		self.connection = rm.open_resource(visa_address)
 		
 	def check_errors(self):
-		response = self.connection.query(f"*CLS {self.EOL}SYST:SERR?")
-		if int(response[0]) != 0:
-			raise CustomError(f"Device has static errors:\n{response}")
+		response = self.connection.query("SYST:ERR?")
+		if int(response.split(",")[0]):
+			raise CustomError(f"Device has errors:\n{response}")
 	
 	def prepare_measurement(self, dict_, devicetype):
 		pass
@@ -244,7 +244,6 @@ class Agilent8257d(SCPISynthesizer):
 class RSSMF100A(SCPISynthesizer):
 	pass
 
-
 class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 	EOL = ";"
 	
@@ -352,9 +351,6 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 
 		# Set start values
 		self.set_values(startvalues)
-
-	def check_errors(self):
-		pass
 
 class ZurichInstrumentsMFLI(LockInAmplifier):
 	def __init__(self, visa_address):
