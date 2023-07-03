@@ -319,10 +319,10 @@ class Measurement(dict):
 		self.probe = None
 		self.pump = None
 		try:
-			self.lockin = devices.connect(self, "lockin")
 			self.probe  = devices.connect(self, "probe")
 			if self.mode != "classic":
 				self.pump   = devices.connect(self, "pump")
+			self.lockin = devices.connect(self, "lockin")
 
 			if self.refillcell:
 				rc, rm = pumpcell.main({
@@ -564,9 +564,11 @@ class Experiment():
 	def loop(self):
 		while True:
 			try:
-				if self.pause_after_abort:
-					while self.state == "aborting":
+				wait_for_user_confirmation = self.pause_after_abort or (self.state == "deviceerror")
+				if wait_for_user_confirmation:
+					while self.state in ["aborting", "deviceerror"]:
 						time.sleep(0.1)
+				
 				self.current_measurement = self.queue.popleft()
 				self.state = "running"
 				self.current_measurement.run()
@@ -578,6 +580,14 @@ class Experiment():
 					"action": "error",
 					"error": f"{E}"
 				})
+			except devices.DeviceError as E:
+				self.send_all({
+					"action": "error",
+					"error": f"{E}"
+				})
+				self.state = "deviceerror"
+				stderr.write(f"An error occurred while performing a measurement:\n{E}\n{traceback.format_exc()}")
+				
 			except Exception as E:
 				self.send_all({
 					"action": "uerror",

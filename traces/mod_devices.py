@@ -15,6 +15,9 @@ TIMESINGAL = False
 class CustomError(Exception):
 	pass
 
+class DeviceError(Exception):
+	pass
+
 
 class Synthesizer():
 	def __init__(self, multiplication=None):
@@ -55,6 +58,8 @@ class MockDevice(Synthesizer, LockInAmplifier):
 			print("CHECKING ERRORS")
 	
 	def prepare_measurement(self, dict_, devicetype):
+		self.check_errors()
+	
 		if "lockin_timeconstant" in dict_ and "lockin_delaytime" in dict_:
 			tc = float(dict_["lockin_timeconstant"].replace("μs", "E-3").replace("ms", "").replace("ks", "E6").replace("s", "E3"))
 			self.dttc = (dict_["lockin_delaytime"] + tc)/1000
@@ -158,6 +163,7 @@ class SCPISynthesizer(Synthesizer, SCPIDevice):
 			# Set external reference
 			"SOUR:ROSC:SOUR":		"EXT",
 			"SOUR:ROSC:OUTP:SOUR":	"EXT",
+			"SOUR:ROSC:EXT:RFOFF":	"ON",
 		}
 		
 		if devicetype == "probe":
@@ -232,17 +238,73 @@ class SCPISynthesizer(Synthesizer, SCPIDevice):
 	def close(self):
 		# Turn off RF power
 		self.connection.write(":OUTP:STATe 0")
-		
-		# Go to local -> unlock front panel controls
-		self.connection.write("&GTL")
-		
 		super().close()
 
-class Agilent8257d(SCPISynthesizer):
-	pass
+class Agilent8257d(SCPISynthesizer, Synthesizer):
+	def prepare_measurement(self, dict_, devicetype):
+		if not dict_["static_skipreset"]:
+			# Create repeatable default state
+			self.connection.write("*RST")
+			self.check_errors()
+		
+			# Set initial frequency to avoid damage
+			init_frequency = dict_[f"{devicetype}_frequency"].init_frequency
+			self.set_frequency(init_frequency)
+		
+		# Find startvalues
+		startvalues = {
+			# Go to remote
+			":DISPlay:REMote": 				"OFF",
+		
+			# Set RF output power
+			"SOUR:POW": 			dict_[f"{devicetype}_power"],
+		
+			# Set external reference
+			"SOUR:ROSC:SOUR":		"EXT",
+		}
+		
+		if devicetype == "probe":
+			startvalues.update({
+				# Set FM modulation
+				"SOUR:FM1:STAT": 		"ON",
+				"SOUR:FM1":     		str(dict_["lockin_fmamplitude"] / self.multiplication) + "kHz",
+				
+				# Set FM modulation signal
+				"SOUR:LFO:STAT":			"ON",
+				"SOUR:LFO:AMPL":			"1VP",
+				"SOUR:FM1:INT:FREQ":		str(dict_["lockin_fmfrequency"]) + "Hz",
+			})
+			
+			if dict_["general_mode"] == "dr_pufm":
+				startvalues.update({
+					"SOUR:FM1:STAT":	"OFF",
+					"SOUR:LFO:STAT":	"OFF",
+			})
+			
+			if dict_["general_mode"] == "tandem":
+				startvalues.update({
+					"SOUR:FM1:SOUR":	"EXT1",
+				})
+		
+		elif devicetype == "pump":
+			raise NotImplementedError("This synthesizer does not support all DR modes.")
+		
+		# Set start values
+		self.set_values(startvalues)
+		
+		# Turn on RF power
+		self.connection.query(f":OUTP:STATe 1 {self.EOL}*OPC?")
+	
+	def close(self):
+		# Go to local -> unlock front panel controls
+		self.connection.write(":SYST:COMM:GTL")
+		super().close()
 
-class RSSMF100A(SCPISynthesizer):
-	pass
+class RSSMF100A(SCPISynthesizer, Synthesizer):
+	def close(self):
+		# Go to local -> unlock front panel controls
+		self.connection.write("&GTL")
+		super().close()
 
 class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 	EOL = ";"
@@ -302,7 +364,7 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 	
 	def get_intensity(self):
 		tmp = self.connection.query("XY.?")
-		x, y = [float(x) for x in tmp.split(',')]
+		x, y = [float(x.split("\n")[0]) for x in tmp.split(",")]
 		return(x, y)
 		
 	def prepare_measurement(self, dict_, devicetype):
@@ -351,6 +413,23 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 
 		# Set start values
 		self.set_values(startvalues)
+		
+		locked_freq = lambda self=self: float(self.connection.query("FRQ.?").split("\n")[0])
+		actual_freq = dict_["lockin_fmfrequency"]
+		
+		timeout_start = time.perf_counter()
+		while not abs(locked_freq() - actual_freq)/actual_freq < 0.01:
+			time.sleep(0.1)
+			
+			if time.perf_counter() - timeout_start > 5:
+				raise CustomError("Timed out when waiting for Lock-In to lock to reference signal")
+	
+	
+	def check_errors(self):
+		pass
+
+class SignalRecovery7270(SignalRecovery7265, LockInAmplifier):
+	EOL = "\n"
 
 class ZurichInstrumentsMFLI(LockInAmplifier):
 	def __init__(self, visa_address):

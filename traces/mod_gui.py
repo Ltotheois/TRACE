@@ -739,6 +739,7 @@ class MainWindow(QMainWindow):
 			"aborting": "#e61022",
 			"running": "#17d40d",
 			"waiting": "#4287f5",
+			"deviceerror": "#ff0000",
 		}.get(state, "none")
 		
 		self.stateindicator.setText("  " + state.capitalize() + "  ")
