@@ -1729,6 +1729,28 @@ class QueueWindow(EQDockWidget):
 				result = dialog.save()
 				measurements = []
 				
+				add_reproducibility_measurements = (result["reproducibility"]["every"] > 0)
+				reproducibility_measurement_every = result["reproducibility"]["every"]
+				if add_reproducibility_measurements:
+					reproducibility_measurement = copy.deepcopy(measurement)
+					
+					for source in ("probe", "pump"):
+						if not result["reproducibility"].get(source):
+							continue
+						center, span = result["reproducibility"][source].get("center"), result["reproducibility"][source].get("span")
+						if center and span:
+							reproducibility_measurement[f"{source}_frequency"]["center"] = center
+							reproducibility_measurement[f"{source}_frequency"]["span"] = span
+							
+							for key in ("start", "stop"):
+								if key in reproducibility_measurement[f"{source}_frequency"]:
+									reproducibility_measurement[f"{source}_frequency"][key]
+						
+				
+				if add_reproducibility_measurements:
+					measurements.append(reproducibility_measurement)
+				
+				total_index = 0
 				for i_pump in range(result["pump"]["measurements"]):
 					for i_probe in range(result["probe"]["measurements"]):
 						tmp_measurement = copy.deepcopy(measurement)
@@ -1756,11 +1778,17 @@ class QueueWindow(EQDockWidget):
 								values["stop"] = new_values["stop"] + i * span
 						
 						measurements.append(tmp_measurement)
+						total_index += 1
 				
-						if i % mw.config["flag_maxmeasurementspermessage"] == 0:
+						if add_reproducibility_measurements and (total_index % reproducibility_measurement_every == 0):
+							measurements.append(reproducibility_measurement)
+						
+						if len(measurements) >= mw.config["flag_maxmeasurementspermessage"]:
 							ws.send({"action": "add_measurements", "measurements": measurements})
 							measurements = []
-					
+				
+				if add_reproducibility_measurements:
+					measurements.append(reproducibility_measurement)
 				ws.send({"action": "add_measurements", "measurements": measurements})
 		
 		# @Luis: Command to set autophase
@@ -1874,6 +1902,7 @@ class BatchDialog(QDialog):
 					layout.addWidget(QQ(QLabel, text="Span first Measurement: "), current_row, 0)
 					layout.addWidget(tmp, current_row, 1)
 					current_row += 1
+					
 				else:
 					start, stop = tmp_dict["start"], tmp_dict["stop"]
 					
@@ -1886,7 +1915,6 @@ class BatchDialog(QDialog):
 					layout.addWidget(QQ(QLabel, text="Stop first Measurement: "), current_row, 0)
 					layout.addWidget(tmp, current_row, 1)
 					current_row += 1
-
 				
 				self.widgets[source]["measurements"] = tmp = QQ(QSpinBox, range=(1, None), change=self.update)
 				layout.addWidget(QQ(QLabel, text="Number of Measurements: "), current_row, 0)
@@ -1902,6 +1930,46 @@ class BatchDialog(QDialog):
 				layout.addWidget(QQ(QLabel, text="Stop Frequency All: "), current_row, 0)
 				layout.addWidget(tmp, current_row, 1)
 				current_row += 1
+		
+		# Reproducibility
+		self.widgets["reproducibility"] = {}
+		
+		if current_row:
+			layout.setRowStretch(current_row, 2)
+			current_row += 1
+		layout.addWidget(QQ(QLabel, text="Reproducibility"), current_row, 0, 1, columns)
+		current_row += 1
+		
+		self.widgets["reproducibility"]["every"] = tmp = QQ(QSpinBox, range=(0, None), value=0, change=self.update)
+		layout.addWidget(QQ(QLabel, text="Every N Measurements: "), current_row, 0)
+		layout.addWidget(tmp, current_row, 1)
+		current_row += 1
+		
+		for source in ("probe", "pump"):
+			self.widgets["reproducibility"][source] = {}
+			Source = source.capitalize()
+			tmp_dict = measurement[f"{source}_frequency"]
+			
+			if tmp_dict["mode"] != "sweep":
+				continue
+			
+			if "span" in tmp_dict and "center" in tmp_dict:
+				center, span = tmp_dict["center"], tmp_dict["span"]
+			else:
+				start, stop = tmp_dict["start"], tmp_dict["stop"]
+				center, span = (start + stop)/2, stop - start
+			
+			self.widgets["reproducibility"][source]["center_label"] = tmp = QQ(QLabel, text=f"Center {Source}: ")
+			layout.addWidget(tmp, current_row, 0)
+			self.widgets["reproducibility"][source]["center"] = tmp = QQ(QDoubleSpinBox, range=(0, None), value=center)
+			layout.addWidget(tmp, current_row, 1)
+			current_row += 1
+			
+			self.widgets["reproducibility"][source]["span_label"] = tmp = QQ(QLabel, text=f"Span {Source}: ")
+			layout.addWidget(tmp, current_row, 0)
+			self.widgets["reproducibility"][source]["span"] = tmp = QQ(QDoubleSpinBox, range=(0, None), value=span)
+			layout.addWidget(tmp, current_row, 1)
+			current_row += 1
 		
 		layout.setRowStretch(current_row, 2)
 		current_row += 1
@@ -1929,6 +1997,12 @@ class BatchDialog(QDialog):
 					
 				widgets["starttotal"].setValue(start_total)
 				widgets["stoptotal"].setValue(stop_total)
+		
+		reproducibility_visible = (self.widgets["reproducibility"]["every"].value() > 0)
+		for source in ("probe", "pump"):
+			widgets = self.widgets["reproducibility"].get(source, [])
+			for widget in widgets.values():
+				widget.setVisible(reproducibility_visible)
 
 	def save(self):
 		results = {}
@@ -1950,6 +2024,18 @@ class BatchDialog(QDialog):
 				
 			else:
 				results[source]["measurements"] = 1
+		
+		results["reproducibility"] = {}
+		results["reproducibility"]["every"] = self.widgets["reproducibility"]["every"].value()
+		for source in ("probe", "pump"):
+			if not self.widgets["reproducibility"][source]:
+				continue
+			
+			results["reproducibility"][source] = {
+				"center": self.widgets["reproducibility"][source]["center"].value(),
+				"center": self.widgets["reproducibility"][source]["span"].value(),
+			}
+			
 		
 		return(results)
 
