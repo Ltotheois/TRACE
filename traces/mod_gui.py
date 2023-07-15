@@ -567,6 +567,7 @@ class MainWindow(QMainWindow):
 				QQ(QAction, parent=self, text="&Load Queue", tooltip="Load queue from file", change=lambda x: self.queuewindow.loadqueue()),
 				None,
 				QQ(QAction, parent=self, text="&Save current values as default", shortcut="Ctrl+D", tooltip="Save current configuration as default", change=lambda x: self.saveoptions()),
+				QQ(QAction, parent=self, text="&Clear Log", tooltip="Clear the log messages in the logwindow", change=lambda x: self.logwindow.clearlog()),
 				None,
 				self.pause_after_abort_action,
 				QQ(QAction, parent=self, text="&Pop current measurement", tooltip="Put current measurement into queue", change=lambda x:ws.send({"action": "pop_measurement"})),
@@ -2282,6 +2283,9 @@ class LogWindow(EQDockWidget):
 		self.log_area.append(text)
 		sb = self.log_area.verticalScrollBar()
 		sb.setValue(sb.maximum())
+	
+	def clearlog(self):
+		self.log_area.clear()
 
 class FileWindow(EQWidget):
 	def __init__(self, id, parent=None):

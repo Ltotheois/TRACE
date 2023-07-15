@@ -98,11 +98,12 @@ class SCPIAttribute():
 
 class SCPIDevice():
 	EOL = "\n"
+	TIMEOUT = 5000
 	
 	def __init__(self, visa_address):
 		rm = pyvisa.ResourceManager()
 		self.connection = None
-		self.connection = rm.open_resource(visa_address)
+		self.connection = rm.open_resource(visa_address, timeout=self.TIMEOUT)
 		
 	def check_errors(self):
 		response = self.connection.query("SYST:ERR?")
