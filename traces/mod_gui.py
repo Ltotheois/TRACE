@@ -1196,6 +1196,7 @@ class SignalClass(QObject):
 	peakfinderstart   = pyqtSignal()
 	peakfinderend     = pyqtSignal()
 	overlapend        = pyqtSignal()
+	lockintypechanged = pyqtSignal()
 	overlapindicator  = pyqtSignal(str)
 	fitindicator      = pyqtSignal(str)
 	setindicator      = pyqtSignal(str)
@@ -1206,6 +1207,7 @@ class SignalClass(QObject):
 	updateconfig      = pyqtSignal(tuple)
 	updatemeasurement = pyqtSignal(tuple)
 	progressbar       = pyqtSignal(int)
+	
 	def __init__(self):
 		super().__init__()
 
@@ -2071,7 +2073,7 @@ class StaticWindow(MeasWidget):
 			"Probe Device":			QQ(QComboBox, "static_probedevice", options=devices.deviceclasses["probe"].keys()),
 			"Probe Multiplication":	QQ(QSpinBox, "static_probemultiplication", range=(1, None)),
 			"Probe Address":		QQ(QLineEdit, "static_probeaddress"),
-			"LockIn Device":		QQ(QComboBox, "static_lockindevice", options=devices.deviceclasses["lockin"].keys()),
+			"LockIn Device":		QQ(QComboBox, "static_lockindevice", options=devices.deviceclasses["lockin"].keys(), change=mw.signalclass.lockintypechanged.emit),
 			"LockIn Address":		QQ(QLineEdit, "static_lockinaddress"),
 			"Pump Device":			QQ(QComboBox, "static_pumpdevice", options=devices.deviceclasses["pump"].keys()),
 			"Pump Multiplication":	QQ(QSpinBox, "static_pumpmultiplication", range=(1, None)),
@@ -2103,16 +2105,49 @@ class LockInWindow(MeasWidget):
 	def __init__(self, parent):
 		self.gridpos = (1, 0)
 		self.title = "LockIn"
+		
+		self.tc_widget = QQ(QComboBox, "lockin_timeconstant", options=devices.SignalRecovery7265.TC_OPTIONS)
+		self.sen_widget = QQ(QComboBox, "lockin_sensitivity", options=devices.SignalRecovery7265.SEN_OPTIONS)
+		self.acgain_widget = QQ(QComboBox, "lockin_acgain", options=devices.SignalRecovery7265.ACGAIN_OPTIONS)
+		
 		self.widgets = {
 			"FM Frequency":			QQ(QDoubleSpinBox, "lockin_fmfrequency", range=(0, None)),
 			"FM Amplitude":			QQ(QDoubleSpinBox, "lockin_fmamplitude", range=(0, None)),
-			"Timeconstant":			QQ(QComboBox, "lockin_timeconstant", options=devices.SignalRecovery7265.TC_OPTIONS),
+			"Timeconstant":			self.tc_widget,
 			"Delay Time":			QQ(QDoubleSpinBox, "lockin_delaytime", range=(0, None)),
-			"Range":				QQ(QComboBox, "lockin_sensitivity", options=devices.SignalRecovery7265.SEN_OPTIONS),
-			"AC Gain":				QQ(QComboBox, "lockin_acgain", options=devices.SignalRecovery7265.ACGAIN_OPTIONS),
+			"Range":				self.sen_widget,
+			"AC Gain":				self.acgain_widget,
 			"Iterations":			QQ(QDoubleSpinBox, "lockin_iterations", range=(1, None)),
 		}
+		
+		mw.signalclass.lockintypechanged.connect(self.update_lockin_options)
 		return super().__init__(parent)
+	
+	
+	
+	def update_lockin_options(self):
+		current_key = mw.config["static_lockindevice"]
+		for key, class_ in devices.deviceclasses["lockin"].items():
+			if key == current_key:
+				current_class = class_
+				break
+		else:
+			raise ValueError("Did not find your currently used lockin in the devices module.")
+		
+		widget_options = {
+			self.tc_widget: current_class.TC_OPTIONS,
+			self.sen_widget: current_class.SEN_OPTIONS,
+			self.acgain_widget: current_class.ACGAIN_OPTIONS,
+		}
+		
+		for widget, options in widget_options.items():
+			current_value = widget.currentText()
+			widget.clear()
+			for key, value in options.items():
+				widget.addItem(value)
+			
+			widget.setCurrentText(current_value)
+		
 	
 class RefillWindow(MeasWidget):
 	def __init__(self, parent):

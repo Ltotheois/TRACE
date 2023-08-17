@@ -34,6 +34,10 @@ class Synthesizer():
 			print(f"SETTING RF FREQUENCY TO {value}")
 
 class LockInAmplifier():
+	TC_OPTIONS = {0: '10μs', 1: '20μs', 2: '50μs', 3: '100μs', 4: '200μs', 5: '500μs', 6: '1ms', 7: '2ms', 8: '5ms', 9: '10ms', 10: '20ms', 11: '50ms', 12: '100ms', 13: '200ms', 14: '500ms', 15: '1s'}
+	ACGAIN_OPTIONS = {x: f"{x*6}dB" for x in range(16)}
+	SEN_OPTIONS = {18: '1mV', 19: '2mV', 20: '5mV', 21: '10mV', 22: '20mV', 23: '50mV', 24: '100mV', 25: '200mV', 26: '500mV', 27: '1V'}
+	
 	def get_intensity(self):
 		if not SILENT:
 			print("GETTING INTENSITY")
@@ -431,6 +435,15 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 
 class SignalRecovery7270(SignalRecovery7265, LockInAmplifier):
 	EOL = "\n"
+	
+	TC_OPTIONS = {0: '10μs', 1: '20μs', 2: '50μs', 3: '100μs', 4: '200μs', 5: '500μs', 6: '1ms', 7: '2ms', 8: '5ms', 9: '10ms', 10: '20ms', 11: '50ms', 12: '100ms', 13: '200ms', 14: '500ms', 15: '1s'}
+	ACGAIN_OPTIONS = {x: f"{x*6}dB" for x in range(16)}
+	SEN_OPTIONS = {18: '1mV', 19: '2mV', 20: '5mV', 21: '10mV', 22: '20mV', 23: '50mV', 24: '100mV', 25: '200mV', 26: '500mV', 27: '1V'}
+	IE_OPTIONS = {0: "Internal", 1: "External Logic (Rear)", 2: "Extern (Front)"}
+	SLOPE_OPTIONS = {0: "6 dB/octave", 1: "12 dB/octave", 2: "18 dB/octave", 3: "24 dB/octave"}
+	REMOTE_OPTIONS = {0: "Local", 1: "Remote"}
+	ADF_OPTIONS = {0:"Factory Default", 1:"Factory Default except connection"}
+	VMODE_OPTIONS = {0:"Both inputs grounded (test mode)", 1:"A input only", 2:"-B input only", 3:"A-B differential mode"}
 
 class ZurichInstrumentsMFLI(LockInAmplifier):
 	def __init__(self, visa_address):
