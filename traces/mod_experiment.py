@@ -369,6 +369,8 @@ class Measurement(dict):
 	def spectrum_loop(self):
 		shm = None
 		try:
+			delay_time = self["lockin_delaytime"] / 1000
+		
 			probe_frequencies = self["probe_frequency"].frequencies()
 			probe_iterations = self["probe_frequency"]["iterations"]
 			
@@ -396,7 +398,8 @@ class Measurement(dict):
 			result = np.ndarray(shape=shape, buffer=shm.buf, dtype=np.float64)
 			result[:] = np.nan
 
-			self.basic_information = {"action": "measurement", "size": size, "name": shm.name, "shape": shape, "time": self.lockin.dttc * n_total}
+			time_estimate = (delay_time * n_total / probe_iterations) + (self.lockin.timeconstant * n_total)
+			self.basic_information = {"action": "measurement", "size": size, "name": shm.name, "shape": shape, "time": time_estimate}
 			server.send_all(self.basic_information)
 
 			row = 0
@@ -409,7 +412,13 @@ class Measurement(dict):
 						for probe_index in range(n_probe):
 							probe_frequency = probe_frequencies[probe_index]
 							self.probe.set_frequency(probe_frequency)
-							for point_iteration in range(point_iterations):
+							
+							# Wait delay time before measuring anything
+							counterstart = time.perf_counter()
+							while time.perf_counter() - counterstart < delay_time:
+								continue
+							
+							for _ in range(point_iterations):
 
 								x, y = self.lockin.measure_intensity()
 								result[row] = probe_frequency, pump_frequency, x, y

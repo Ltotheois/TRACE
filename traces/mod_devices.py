@@ -45,7 +45,7 @@ class LockInAmplifier():
 	
 	def measure_intensity(self):
 		counterstart = time.perf_counter()
-		while time.perf_counter() - counterstart < self.dttc:
+		while time.perf_counter() - counterstart < self.timeconstant:
 			continue
 
 		return(self.get_intensity())
@@ -64,9 +64,9 @@ class MockDevice(Synthesizer, LockInAmplifier):
 	def prepare_measurement(self, dict_, devicetype):
 		self.check_errors()
 	
-		if "lockin_timeconstant" in dict_ and "lockin_delaytime" in dict_:
-			tc = float(dict_["lockin_timeconstant"].replace("μs", "E-3").replace("ms", "").replace("ks", "E6").replace("s", "E3"))
-			self.dttc = (dict_["lockin_delaytime"] + tc)/1000
+		if "lockin_timeconstant" in dict_:
+			self.timeconstant = float(dict_["lockin_timeconstant"].replace("μs", "E-3").replace("ms", "").replace("ks", "E6").replace("s", "E3"))
+			self.timeconstant /= 1000
 		if not SILENT:
 			print("SETTING START VALUES")
 
@@ -350,7 +350,7 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 	
 	def measure_intensity(self):
 		counterstart = time.perf_counter()
-		while time.perf_counter() - counterstart < self.dttc:
+		while time.perf_counter() - counterstart < self.timeconstant:
 			continue
 
 		return(self.get_intensity())
@@ -360,7 +360,9 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 		for state in (0, 1):
 			self.pump.set_rfpower(state)
 			counterstart = time.perf_counter()
-			while time.perf_counter() - counterstart < self.dttc:
+			
+			additional_delay_time = state * self["lockin_delaytime"]
+			while time.perf_counter() - counterstart < self.timeconstant + additional_delay_time:
 				continue
 			results[state] = self.get_intensity()
 		
@@ -385,8 +387,8 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 			self.measure_intensity = self.measure_intensity_dmdr_digital
 		
 		# Create format that is understood by lockin amplifier
-		tc = float(dict_["lockin_timeconstant"].replace("μs", "E-3").replace("ms", "").replace("ks", "E6").replace("s", "E3"))
-		self.dttc = (dict_["lockin_delaytime"] + tc)/1000
+		self.timeconstant = float(dict_["lockin_timeconstant"].replace("μs", "E-3").replace("ms", "").replace("ks", "E6").replace("s", "E3"))
+		self.timeconstant /= 1000
 		
 		
 		for key, options in (("lockin_timeconstant", self.TC_OPTIONS), ("lockin_acgain", self.ACGAIN_OPTIONS), ("lockin_sensitivity", self.SEN_OPTIONS)):
@@ -454,8 +456,8 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 		pass
 	
 	def prepare_measurement(self, dict_, devicetype):
-		tc = float(dict_["lockin_timeconstant"].replace("μs", "E-6").replace("ms", "E-3").replace("ks", "E3").replace("s", ""))
-		self.dttc = dict_["lockin_delaytime"]/1000 + tc
+		self.timeconstant = float(dict_["lockin_timeconstant"].replace("μs", "E-6").replace("ms", "E-3").replace("ks", "E3").replace("s", ""))
+		self.timeconstant /= 1000
 		
 		# External 10 MHz reference
 		self.daq.setInt('/dev4055/system/extclk', 1)
@@ -575,7 +577,7 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 	
 	def measure_intensity(self):
 		counterstart = time.perf_counter()
-		while time.perf_counter() - counterstart < self.dttc:
+		while time.perf_counter() - counterstart < self.timeconstant:
 			continue
 
 		return(self.get_intensity())

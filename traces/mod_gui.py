@@ -544,11 +544,11 @@ class MainWindow(QMainWindow):
 				QQ(QAction, parent=self, text="&Quit", change=self.close, tooltip="Close the program"),
 			),
 			"View": (
-				QQ(QAction, "layout_mpltoolbar", parent=self, text="&MPL Toolbar", shortcut="Shift+1", tooltip="Show or hide toolbar to edit or save the plot canvas", checkable=True),
-				QQ(QAction, parent=self, text="&Hover Window", shortcut="Shift+6", tooltip="Show the hover window", change=lambda x: self.hoverwindow.show() and self.hoverwindow.activateWindow()),
 				QQ(QAction, parent=self, text="&Config Window", shortcut="Shift+7", tooltip="Show the config window", change=lambda x: self.configwindow.show() and self.configwindow.activateWindow()),
+				QQ(QAction, "layout_mpltoolbar", parent=self, text="&MPL Toolbar", shortcut="Shift+1", tooltip="Show or hide toolbar to edit or save the plot canvas", checkable=True),
 				toggleaction_queue,
 				toggleaction_log,
+				QQ(QAction, parent=self, text="&Hover Window", shortcut="Shift+6", tooltip="Show the hover window", change=lambda x: self.hoverwindow.show() and self.hoverwindow.activateWindow()),
 				None,
 				QQ(QAction, "flag_alwaysshowlog", parent=self,  text="&Force Show Log", tooltip="Make log window visible if a new message is shown", checkable=True),
 			),
@@ -808,6 +808,7 @@ class PlotWidget(QGroupBox):
 		
 		self.meas_array = None
 		self.meas_coll = matplotlib.collections.LineCollection(np.zeros(shape=(0,2,2)), colors=mw.config["color_meas"])
+		self.meas_coll_scatter = self.ax.scatter([], [], color=mw.config["color_meas"], marker="x", zorder=100)
 		self.ax.add_collection(self.meas_coll)
 		
 		self.shared_memory = None
@@ -817,7 +818,6 @@ class PlotWidget(QGroupBox):
 			"exp": None,
 			"cat": None,
 			"lin": self.ax.scatter([], [], color=mw.config["color_lin"], marker="*", zorder=100),
-			"meas": None,
 		}
 		
 		self.timer = QTimer(app)
@@ -1025,8 +1025,18 @@ class PlotWidget(QGroupBox):
 		xmin, xmax = self.freqrange
 		ymin, ymax = self.intrange
 
-		segs = np.array(((xs[:-1], xs[1:]), (ys[:-1], ys[1:]))).T
+		if mw.config["plot_scatter"]:
+			offsets = np.vstack((xs, ys)).T
+		else:
+			offsets = np.empty((0, 2))
+			
+		if mw.config["plot_line"]:
+			segs = np.array(((xs[:-1], xs[1:]), (ys[:-1], ys[1:]))).T
+		else:
+			segs = np.empty((0, 2))
+
 		self.meas_coll.set(segments=segs, color=mw.config["color_meas"])
+		self.meas_coll_scatter.set(offsets=offsets, color=mw.config["color_meas"])
 
 		margin = mw.config["plot_ymargin"]
 		yrange = [ymin-margin*(ymax-ymin), ymax+margin*(ymax-ymin)]
@@ -2117,7 +2127,7 @@ class LockInWindow(MeasWidget):
 			"Delay Time":			QQ(QDoubleSpinBox, "lockin_delaytime", range=(0, None)),
 			"Range":				self.sen_widget,
 			"AC Gain":				self.acgain_widget,
-			"Iterations":			QQ(QDoubleSpinBox, "lockin_iterations", range=(1, None)),
+			"Iterations":			QQ(QSpinBox, "lockin_iterations", range=(1, None)),
 		}
 		
 		mw.signalclass.lockintypechanged.connect(self.update_lockin_options)
@@ -2963,6 +2973,8 @@ config_specs = {
 	"plot_skipbinning":						[1000, int],
 	"plot_expasstickspectrum":				[False, bool],
 	"plot_showmagnitude":					[False, bool],
+	"plot_scatter":							[False, bool],
+	"plot_line":							[True, bool],
 
 	"flag_qns":								[3, int],
 	"flag_automatic_draw":					[True, bool],
