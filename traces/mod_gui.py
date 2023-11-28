@@ -334,6 +334,10 @@ class MainWindow(QMainWindow):
 		elif action == "pause_after_abort":
 			state = message["state"]
 			self.update_pause_after_abort(state)
+		
+		elif action == "measurements_folder":
+			folder = message["folder"]
+			webbrowser.open(folder)
 
 		else:
 			self.notification(f"<span style='color:#ff0000;'>ERROR</span>: Received a message with the unknown action '{action}' {message=}.")
@@ -568,6 +572,7 @@ class MainWindow(QMainWindow):
 				None,
 				QQ(QAction, parent=self, text="&Save current values as default", shortcut="Ctrl+D", tooltip="Save current configuration as default", change=lambda x: self.saveoptions()),
 				QQ(QAction, parent=self, text="&Clear Log", tooltip="Clear the log messages in the logwindow", change=lambda x: self.logwindow.clearlog()),
+				QQ(QAction, parent=self, text="&Open Measurements Folder", tooltip="Open folder where measurements are stored", change=lambda x: ws.send({"action": "measurements_folder"})),
 				None,
 				self.pause_after_abort_action,
 				QQ(QAction, parent=self, text="&Pop current measurement", tooltip="Put current measurement into queue", change=lambda x:ws.send({"action": "pop_measurement"})),

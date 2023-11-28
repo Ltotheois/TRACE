@@ -462,7 +462,7 @@ class Measurement(dict):
 				self[key] = tmp
 
 	def save(self):
-		directory = os.path.join(homefolder, f"data/{self.get('general_molecule', 'Unknown')}/{str(datetime.now())[:10]}")
+		directory = os.path.join(homefolder, "data", str(datetime.now())[:10])
 		if not os.path.exists(directory):
 			os.makedirs(directory, exist_ok=True)
 		
@@ -722,6 +722,10 @@ class Websocket():
 					
 					elif action == "pause_after_abort":
 						self.experiment.pause_after_abort = not self.experiment.pause_after_abort
+					
+					elif action == "measurements_folder":
+						folder = os.path.join(homefolder, "data")
+						await websocket.send(json.dumps({"action": "measurements_folder", "folder": folder}))
 					
 					elif action == "kill":
 						await asyncio.gather(*[listener.close() for listener in self.listeners])
