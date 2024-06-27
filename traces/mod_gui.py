@@ -1703,8 +1703,8 @@ class QueueWindow(EQDockWidget):
 		elif key == "Run now":
 			ws.send({"action": "add_measurement_now", "measurement": measurement})
 		elif key == "Del all":
-			reply = QMessageBox.question(self, 'Delete all', 'Are you sure you want to delete all pending measurements?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-			if reply == QMessageBox.Yes:
+			reply = QMessageBox.question(self, 'Delete all', 'Are you sure you want to delete all pending measurements?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+			if reply == QMessageBox.StandardButton.Yes:
 				ws.send({"action": "del_measurements"})
 		elif key == "Add list":
 			fname = QFileDialog.getOpenFileName(None, 'Choose List to load',"")[0]
