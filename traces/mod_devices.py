@@ -175,7 +175,7 @@ class SCPISynthesizer(Synthesizer, SCPIDevice):
 			startvalues.update({
 				# Set FM modulation
 				"SOUR:FM1:STAT": 		"ON",
-				"SOUR:FM1:DEV": 		str(dict_["lockin_fmamplitude"] / self.multiplication) + "kHz",
+				"SOUR:FM1:DEV": 		str(dict_["lockin_fmdeviation"] / self.multiplication) + "kHz",
 				
 				# Set FM modulation signal
 				"SOUR:LFO":				"ON",
@@ -222,7 +222,7 @@ class SCPISynthesizer(Synthesizer, SCPIDevice):
 					# Turn on LFO and set FM1 values
 					"SOUR:LFO": 					"ON",
 					"SOUR:FM1:STAT": 				"ON",
-					"SOUR:FM1:DEV": 				str(dict_["lockin_fmamplitude"] / self.multiplication) + "kHz",
+					"SOUR:FM1:DEV": 				str(dict_["lockin_fmdeviation"] / self.multiplication) + "kHz",
 					"SOUR:LFO1:FREQ":				str(dict_["lockin_fmfrequency"]) + "Hz",
 				})
 			
@@ -272,7 +272,7 @@ class Agilent8257d(SCPISynthesizer, Synthesizer):
 			startvalues.update({
 				# Set FM modulation
 				"SOUR:FM1:STAT": 		"ON",
-				"SOUR:FM1":     		str(dict_["lockin_fmamplitude"] / self.multiplication) + "kHz",
+				"SOUR:FM1":     		str(dict_["lockin_fmdeviation"] / self.multiplication) + "kHz",
 				
 				# Set FM modulation signal
 				"SOUR:LFO:STAT":			"ON",
@@ -598,7 +598,7 @@ class ZurichInstrumentsMFLI(LockInAmplifier):
 	# @Luis: Remove after time signal testing
 	def close_ts(self):
 		self.daq.disconnect()
-		amp = self.tmp_dict["lockin_fmamplitude"]
+		amp = self.tmp_dict["lockin_fmdeviation"]
 		np.save(f"..\\fmamp_{amp:.0f}.npy", self.data[:self.i])
 
 

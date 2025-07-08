@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import json
+import serial
 import traceback
 import pandas as pd
 import numpy as np
@@ -19,12 +20,25 @@ from datetime import datetime
 import configparser
 
 from . import mod_devices as devices
-from . import mod_pumpcell as pumpcell
 
 URL, PORT = "localhost", 8112
 
 homefolder = os.path.join(os.path.expanduser("~"), "TRACE")
 os.makedirs(homefolder, exist_ok=True)
+
+## Options for Initializing Serial Devices
+kwargs_serial_gauge = {
+	"baudrate":				2400,
+	"timeout":				1,
+}
+
+## Translate units into mbar
+pressure_translation = {
+	"mbar":						1,
+	"torr":						1.33322,
+	"pa":						0.01,
+	"micron":					0.001,
+}
 
 class Tee(object):
 	def __init__(self, name, mode, stderr=False):
@@ -225,9 +239,7 @@ class Measurement(dict):
 		if self.mode not in modes:
 			raise CustomValueError(f"The parameter 'general_mode' has to be in {modes} but is {self.mode}")
 
-		self.readpressure = dict_.get("refill_measurepressure")
 		self.sendnotification = dict_.get("general_sendnotification")
-		self.refillcell = dict_.get("refill_refill")
 		
 		checktype_dict = {
 			"general_mode*":					str,
@@ -237,10 +249,11 @@ class Measurement(dict):
 			"static_lockinaddress*":			str,
 			"static_lockindevice*":				str,
 			"static_skipreset*":				bool,
+			"static_pressuregaugaaddress":		str,
 			"probe_frequency*":					Sweep,
 			"probe_power*":						pint,
 			"lockin_fmfrequency*":				pfloat,
-			"lockin_fmamplitude*":				pfloat,
+			"lockin_fmdeviation*":				pfloat,
 			"lockin_timeconstant*":				str,
 			"lockin_delaytime*":				pfloat,
 			"lockin_sensitivity*":				str,
@@ -253,7 +266,6 @@ class Measurement(dict):
 			"general_comment": 					str,
 			"general_project": 					str,
 			"general_sendnotification": 		bool,
-			"refill_measurepressure": 			bool,
 		}
 		
 		if (self.mode != "classic"):
@@ -271,25 +283,8 @@ class Measurement(dict):
 				"general_dmperiod*":			pfloat,
 			})
 		
-		if self.readpressure:
-			checktype_dict.update({"refill_address*":	str,})
-		else:
-			checktype_dict.update({"general_manualpressure":	str,})
-		
 		if self.sendnotification:
 			checktype_dict.update({"general_notificationaddress*":	str,})
-		
-		if self.refillcell:
-			checktype_dict.update({
-				"refill_address*": 				str,
-				"refill_inletaddress*": 		str,
-				"refill_outletaddress*": 		str,
-				"refill_minpressure*": 			pfloat,
-				"refill_maxpressure*": 			pfloat,
-				"refill_thresholdpressure*":	pfloat,
-				"refill_emptypressure*": 		pfloat,
-				"refill_force*": 				bool,
-			})
 		
 		creation_dict_ = {}
 		exceptions = []
@@ -324,28 +319,13 @@ class Measurement(dict):
 				self.pump   = devices.connect(self, "pump")
 			self.lockin = devices.connect(self, "lockin")
 
-			if self.refillcell:
-				rc, rm = pumpcell.main({
-					"pressure_min"				: self["refill_minpressure"] / 1e6,
-					"pressure_max"				: self["refill_maxpressure"] / 1e6,
-					"pressure_threshold"		: self["refill_thresholdpressure"] / 1e6,
-					"pressure_empty"			: self["refill_emptypressure"] / 1e6,
-					"pressure_gauge_port"		: self["refill_address"],
-					"valve_inlet_port"			: self["refill_inletaddress"],
-					"valve_outlet_port"			: self["refill_outletaddress"],
-					"force"						: self["refill_force"],
-				})
-				
-				if rc < 1:
-					raise CustomError(rm)
-
-			self.pressure_wrapper("general_pressurestart")
+			self['general_pressurestart'] = self.measure_pressure()
 			self["general_datestart"] = str(datetime.now())[:19]
 			
 			self.spectrum_loop()
 			
 			self["general_dateend"] = str(datetime.now())[:19]
-			self.pressure_wrapper("general_pressureend")
+			self['general_pressureend'] = self.measure_pressure()
 
 			self.save()
 			
@@ -452,14 +432,32 @@ class Measurement(dict):
 				shm.close()
 				shm.unlink()
 
-	def pressure_wrapper(self, key):
-		if self.readpressure:
-			tmp = pumpcell.measure_pressure_wrapper(self["refill_address"])
-			if isinstance(tmp, Exception):
+	def measure_pressure(self):
+		address = self['static_pressuregaugaaddress']
+		
+		if not address.strip():
+			return(None)
+		
+		try:
+			device = serial.Serial(port=address, **kwargs_serial_gauge)
+			
+			command = "MES R TM2\r\n"
+			command = command.encode("utf-8")
+			device.write(command)
+			response = device.readline().decode("utf-8")
+
+			if not response:
 				server.send_all({"action": "error", "error": f"Could not read pressure. Error reads {tmp}."})
-				self[key] = None
-			else:
-				self[key] = tmp
+				return(None)
+				
+			channel, unit, value = response.split(":")[:3]
+			unit_factor = pressure_translation[unit.lower().strip()]
+			pressure = np.float64(value)*unit_factor
+			return(pressure/1000)
+
+		except Exception as E:
+			server.send_all({"action": "error", "error": f"Could not read pressure. Error reads {tmp}."})
+			return(None)
 
 	def save(self):
 		directory = os.path.join(homefolder, "data", str(datetime.now())[:10])

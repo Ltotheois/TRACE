@@ -181,7 +181,6 @@ class MainWindow(QMainWindow):
 		self.probewindow = ProbeWindow(self)
 		self.pumpwindow = PumpWindow(self)
 		self.lockinwindow = LockInWindow(self)
-		self.refillwindow = RefillWindow(self)
 		self.hoverwindow = HoverWindow(self)
 		self.hoverwindow.hide()
 		self.configwindow = ConfigWindow(self)
@@ -343,7 +342,7 @@ class MainWindow(QMainWindow):
 			self.notification(f"<span style='color:#ff0000;'>ERROR</span>: Received a message with the unknown action '{action}' {message=}.")
 	
 	def get_measurement_data(self):
-		key_prefixes = ("general", "static", "lockin", "probe", "pump", "refill")
+		key_prefixes = ("general", "static", "lockin", "probe", "pump")
 		measurement = {key: value for key, value in mw.config.items() if key.split("_")[0] in key_prefixes}
 		return(measurement)
 	
@@ -2085,14 +2084,15 @@ class StaticWindow(MeasWidget):
 		self.gridpos = (0, 0)
 		self.title = "Static Values"
 		self.widgets = {
-			"Probe Device":			QQ(QComboBox, "static_probedevice", options=devices.deviceclasses["probe"].keys()),
-			"Probe Multiplication":	QQ(QSpinBox, "static_probemultiplication", range=(1, None)),
-			"Probe Address":		QQ(QLineEdit, "static_probeaddress"),
-			"LockIn Device":		QQ(QComboBox, "static_lockindevice", options=devices.deviceclasses["lockin"].keys(), change=mw.signalclass.lockintypechanged.emit),
-			"LockIn Address":		QQ(QLineEdit, "static_lockinaddress"),
-			"Pump Device":			QQ(QComboBox, "static_pumpdevice", options=devices.deviceclasses["pump"].keys()),
-			"Pump Multiplication":	QQ(QSpinBox, "static_pumpmultiplication", range=(1, None)),
-			"Pump Address":			QQ(QLineEdit, "static_pumpaddress"),
+			"Probe Device":				QQ(QComboBox, "static_probedevice", options=devices.deviceclasses["probe"].keys()),
+			"Probe Multiplication":		QQ(QSpinBox, "static_probemultiplication", range=(1, None)),
+			"Probe Address":			QQ(QLineEdit, "static_probeaddress"),
+			"LockIn Device":			QQ(QComboBox, "static_lockindevice", options=devices.deviceclasses["lockin"].keys(), change=mw.signalclass.lockintypechanged.emit),
+			"LockIn Address":			QQ(QLineEdit, "static_lockinaddress"),
+			"Pump Device":				QQ(QComboBox, "static_pumpdevice", options=devices.deviceclasses["pump"].keys()),
+			"Pump Multiplication":		QQ(QSpinBox, "static_pumpmultiplication", range=(1, None)),
+			"Pump Address":				QQ(QLineEdit, "static_pumpaddress"),
+			"Pressure Gauge Address":	QQ(QLineEdit, "static_pressuregaugaaddress"),
 		}
 		return super().__init__(parent)
 
@@ -2127,7 +2127,7 @@ class LockInWindow(MeasWidget):
 		
 		self.widgets = {
 			"FM Frequency":			QQ(QDoubleSpinBox, "lockin_fmfrequency", range=(0, None)),
-			"FM Amplitude":			QQ(QDoubleSpinBox, "lockin_fmamplitude", range=(0, None)),
+			"FM Deviation":			QQ(QDoubleSpinBox, "lockin_fmdeviation", range=(0, None)),
 			"Timeconstant":			self.tc_widget,
 			"Delay Time":			QQ(QDoubleSpinBox, "lockin_delaytime", range=(0, None)),
 			"Range":				self.sen_widget,
@@ -2162,25 +2162,6 @@ class LockInWindow(MeasWidget):
 				widget.addItem(value)
 			
 			widget.setCurrentText(current_value)
-		
-	
-class RefillWindow(MeasWidget):
-	def __init__(self, parent):
-		self.gridpos = (0, 2)
-		self.title = "Pressure and Refill"
-		self.widgets = {
-			"Gauge Address":		QQ(QLineEdit, "refill_address"),
-			"Measure Pressure":		QQ(QBoolComboBox, "refill_measurepressure"),
-			"Refill Cell":			QQ(QBoolComboBox, "refill_refill"),
-			"Inlet Address":		QQ(QLineEdit, "refill_inletaddress"),
-			"Outlet Address":		QQ(QLineEdit, "refill_outletaddress"),
-			"Min Pressure":			QQ(QDoubleSpinBox, "refill_minpressure", range=(0, None)),
-			"Max Pressure":			QQ(QDoubleSpinBox, "refill_maxpressure", range=(0, None)),
-			"Threshold Pressure":	QQ(QDoubleSpinBox, "refill_thresholdpressure", range=(0, None)),
-			"Empty Pressure":		QQ(QDoubleSpinBox, "refill_emptypressure", range=(0, None)),
-			"Force Refill":			QQ(QBoolComboBox, "refill_force"),
-		}
-		return super().__init__(parent)
 
 class HoverWindow(EQWidget):
 	def __init__(self, parent=None):
@@ -2919,6 +2900,7 @@ config_specs = {
 	"static_pumpdevice":					["MockDevice", str],
 	"static_pumpmultiplication":			[1, int],
 	"static_skipreset":						[False, bool],
+	"static_pressuregaugaaddress":			['', str],
 	
 	"probe_power":							[10, int],
 	"probe_frequency":						[{
@@ -2937,23 +2919,12 @@ config_specs = {
 											}, dict],
 	
 	"lockin_fmfrequency":					[27613, float],
-	"lockin_fmamplitude":					[180, float],
+	"lockin_fmdeviation":					[180, float],
 	"lockin_timeconstant":					["20ms", str],
 	"lockin_delaytime":						[25, float],
 	"lockin_sensitivity":					["500mV", str],
 	"lockin_acgain":						["0dB", str],
 	"lockin_iterations":					[1, int],
-	
-	"refill_refill":						[False, bool],
-	"refill_measurepressure":				[True, bool],
-	"refill_address": 						["", str],
-	"refill_inletaddress": 					["", str],
-	"refill_outletaddress": 				["", str],
-	"refill_minpressure": 					[0, float],
-	"refill_maxpressure": 					[0, float],
-	"refill_thresholdpressure": 			[0, float],
-	"refill_emptypressure": 				[0, float],
-	"refill_force": 						[False, bool],
 
 	"layout_mpltoolbar":					[False, bool],
 

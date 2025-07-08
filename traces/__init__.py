@@ -1,8 +1,3 @@
-from . import mod_gui as gui
-from . import mod_experiment as experiment
-from . import mod_devices as devices
-from . import mod_pumpcell as pumpcell
-
 def start():
 	try:
 		import subprocess
@@ -15,3 +10,6 @@ def start():
 	except Exception as E:
 		print(E)
 		input("Startup failed. Press any key to exit.")
+
+if __name__ == '__main__':
+	start()
