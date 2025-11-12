@@ -1713,7 +1713,7 @@ class QueueWindow(EQDockWidget):
 			with open(fname) as file:
 				list_ = file.read()
 			
-			list_ = np.genfromtxt(list_.split("\n"), delimiter="\t", names=True, deletechars='')
+			list_ = np.genfromtxt(list_.split("\n"), delimiter="\t", names=True, deletechars='', ndmin=2)
 			headers = list_.dtype.names
 			measurements = []
 			
