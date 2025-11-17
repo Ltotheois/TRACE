@@ -651,17 +651,19 @@ class Experiment():
 
 class Websocket():
 	def __init__(self, experiment):
-		self.server = websockets.serve(self.main, URL, PORT)
-		self.loop = asyncio.get_event_loop()
 		self.listeners = set()
 		self.experiment = experiment
 		experiment.send_all = self.send_all
+		self.loop = None
 	
-	def start(self):
-		self.loop.run_until_complete(self.server)
-		self.loop.run_forever()
+	async def start(self):
+		self.server = await websockets.serve(self.main, URL, PORT)
+		self.loop = self.server.get_loop()
+		await self.server.serve_forever()
 		
 	def send_all(self, dict_):
+		while not self.loop:
+			time.sleep(1)
 		asyncio.run_coroutine_threadsafe(self.send_all_core(dict_), self.loop)
 		
 	async def send_all_core(self, dict_):
@@ -671,7 +673,7 @@ class Websocket():
 			print(E)
 			raise E
 		
-	async def main(self, websocket, path):
+	async def main(self, websocket):
 		try:
 			self.listeners.add(websocket)
 			await websocket.send(json.dumps({"action": "state", "state": self.experiment.state}))
@@ -754,6 +756,7 @@ class Websocket():
 		finally:
 			self.listeners.remove(websocket)
 
+
 def start():
 	global experiment
 	global server
@@ -764,12 +767,13 @@ def start():
 	os.makedirs(log_folder, exist_ok=True)
 	stdout = Tee(os.path.join(log_folder, "EXPERIMENT.txt"), "a+", False)
 	stderr = Tee(os.path.join(log_folder, "EXPERIMENT.err"), "a+", True)
-	
+
 	experiment = Experiment()
 	server = Websocket(experiment)
 	
 	experiment.start()
-	server.start()
+	asyncio.run(server.start())
+	
 
 if __name__ == "__main__":
 	start()

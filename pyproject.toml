@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "traces"
+name = "trace_cologne"
 version = "0.9"
 authors = [
   { name="Luis Bonah", email="bonah@ph1.uni-koeln.de" },
@@ -20,6 +20,6 @@ classifiers = [
 keywords = ["Experiment", "Absorptions", "Spectroscopy"]
 
 [project.scripts]
-TRACE = "traces:start"
-TRACE_GUI = "traces.mod_gui:start"
-TRACE_EXP = "traces.mod_experiment:start"
+trace = "traces:start"
+trace_gui = "traces.mod_gui:start"
+trace_exp = "traces.mod_experiment:start"

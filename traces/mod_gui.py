@@ -62,9 +62,6 @@ import matplotlib
 from matplotlib import style, figure
 from matplotlib.backends.backend_qt5agg import FigureCanvas, NavigationToolbar2QT
 
-import warnings
-warnings.simplefilter('ignore', np.RankWarning)
-
 QLocale.setDefault(QLocale("en_EN"))
 
 from . import mod_devices as devices
