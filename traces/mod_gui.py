@@ -384,7 +384,7 @@ class MainWindow(QMainWindow):
 
         elif action == "measurements_folder":
             folder = message["folder"]
-            webbrowser.open(folder)
+            webbrowser.open('file://' + folder)
 
         else:
             self.notification(
@@ -1255,8 +1255,8 @@ class PlotWidget(QGroupBox):
         self.freqrange = (position - width / 2, position + width / 2)
         self.set_data()
 
-    def set_data(self):
-        thread = threading.Thread(target=self.set_data_core)
+    def set_data(self, manual_draw=False):
+        thread = threading.Thread(target=self.set_data_core, kwargs={'manual_draw': manual_draw})
         with locks["currThread"]:
             thread.start()
             self.set_data_id = thread.ident
@@ -1264,19 +1264,14 @@ class PlotWidget(QGroupBox):
 
     @working_d
     @synchronized_d(locks["axs"])
-    def set_data_core(self):
+    def set_data_core(self, manual_draw=False):
         with locks["currThread"]:
             ownid = threading.current_thread().ident
 
         try:
-            if not mw.config["flag_automatic_draw"]:
-                return
-
-            breakpoint(ownid, self.set_data_id)
-
             ax = self.ax
             autoscale = mw.config["plot_autoscale"]
-            self.set_meas_data(standalone=False)
+            self.set_meas_data(standalone=False, manual_draw=manual_draw)
             xmin, xmax = self.freqrange
             datatypes = ("exp", "cat", "lin")
             dataframes = {
@@ -1362,7 +1357,9 @@ class PlotWidget(QGroupBox):
             pass
 
     @synchronized_d(locks["axs"])
-    def set_meas_data(self, standalone=True):
+    def set_meas_data(self, standalone=True, manual_draw=False):
+        if not mw.config["flag_automatic_draw"] and not manual_draw:
+            return
         meas_data = self.get_meas_data()
 
         if mw.tabwidget.currentIndex():
@@ -1420,6 +1417,9 @@ class PlotWidget(QGroupBox):
 
         if standalone:
             mw.signalclass.drawplot.emit()
+
+    def manual_draw(self):
+        self.set_data(manual_draw=True)
 
     def on_click(self, event):
         pass

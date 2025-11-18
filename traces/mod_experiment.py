@@ -43,11 +43,11 @@ pressure_translation = {
 
 class Tee(object):
 	def __init__(self, name, mode, target_stderr=False):
-		self.file = open(name, mode)
+		self._file = open(name, mode)
 		self._original_object = sys.stderr if target_stderr else sys.stdout
 		self._target_stderr = target_stderr
 	
-		if target_stderr:
+		if self._target_stderr:
 			sys.stderr = self
 		else:
 			sys.stdout = self
@@ -57,14 +57,14 @@ class Tee(object):
 			sys.stderr = self._original_object
 		else:
 			sys.stdout = self._original_object
-		self.file.close()
+		self._file.close()
 
 	def write(self, data):
-		self.file.write(data)
-		self.std.write(data)
+		self._file.write(data)
+		self._original_object.write(data)
 
 	def flush(self):
-		self.file.flush()
+		self._file.flush()
 
 
 class CustomError(Exception):
