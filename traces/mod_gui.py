@@ -50,7 +50,7 @@ import subprocess
 import webbrowser
 import pyckett
 
-from multiprocessing import shared_memory
+from multiprocessing import shared_memory, resource_tracker
 from scipy import optimize, special, signal
 
 from PyQt6.QtCore import *
@@ -249,20 +249,25 @@ class MainWindow(QMainWindow):
 
     @synchronized_d(locks["meas"])
     def closeEvent(self, event):
+        self.signalclass.notification.disconnect()
 
         try:
             ws.close()
+        except Exception as E:
+            print(E)
 
+        try:
             if self.plotwidget.shared_memory:
                 self.plotwidget.shared_memory.close()
                 self.plotwidget.meas_array = None
-        except:
-            pass
+        except Exception as E:
+            print(E)
 
         self.logwindow.close()
         self.queuewindow.close()
         self.hoverwindow.close()
         self.configwindow.close()
+        self.notificationsbox.close()
 
         event.accept()
 
@@ -1189,6 +1194,7 @@ class PlotWidget(QGroupBox):
             self.meas_array = None
 
         self.shared_memory = shared_memory.SharedMemory(name=name, size=size)
+        resource_tracker.unregister(f"/{self.shared_memory.name}", "shared_memory")
         self.meas_array = np.ndarray(
             shape, dtype=np.float64, buffer=self.shared_memory.buf
         )
@@ -1473,6 +1479,8 @@ class PlotWidget(QGroupBox):
 
 class Websocket:
     def __init__(self):
+        self.thread = None
+        self.websocket = None
         self.start()
 
     def start(self):
@@ -1489,10 +1497,23 @@ class Websocket:
         )
         self.thread = threading.Thread(target=self.websocket.run_forever)
         self.thread.start()
-        mw.ws = self.websocket
 
     def close(self):
-        self.websocket.close()
+        try:
+            if self.websocket:
+                try:
+                    self.websocket.close()
+                except Exception:
+                    pass
+
+            if self.thread:
+                try:
+                    self.thread.join(timeout=1.0)
+                    del self.thread
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def on_message(self, ws, message):
         message = json.loads(message)
@@ -3742,8 +3763,10 @@ def start():
     app.setStyle("Fusion")
     mw = MainWindow()
     ws = Websocket()
+
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
     start()
+    

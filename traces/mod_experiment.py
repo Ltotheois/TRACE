@@ -526,8 +526,10 @@ class Measurement(dict):
 			if shm:
 				shm.close()
 				shm.unlink()
+			self.basic_information = None
 
 	def measure_pressure(self):
+		device = None
 		address = self["static_pressuregaugaaddress"]
 
 		if not address.strip():
@@ -540,6 +542,7 @@ class Measurement(dict):
 			command = command.encode("utf-8")
 			device.write(command)
 			response = device.readline().decode("utf-8")
+
 
 			if not response:
 				server.send_all(
@@ -563,6 +566,9 @@ class Measurement(dict):
 				}
 			)
 			return None
+		finally:
+			if device and device.is_open:
+				device.close()
 
 	def save(self):
 		directory = os.path.join(homefolder, "data", str(datetime.now())[:10])
