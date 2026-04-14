@@ -384,7 +384,7 @@ class MainWindow(QMainWindow):
 
         elif action == "measurements_folder":
             folder = message["folder"]
-            webbrowser.open('file://' + folder)
+            webbrowser.open("file://" + folder)
 
         else:
             self.notification(
@@ -1256,7 +1256,9 @@ class PlotWidget(QGroupBox):
         self.set_data()
 
     def set_data(self, manual_draw=False):
-        thread = threading.Thread(target=self.set_data_core, kwargs={'manual_draw': manual_draw})
+        thread = threading.Thread(
+            target=self.set_data_core, kwargs={"manual_draw": manual_draw}
+        )
         with locks["currThread"]:
             thread.start()
             self.set_data_id = thread.ident
@@ -3769,4 +3771,3 @@ def start():
 
 if __name__ == "__main__":
     start()
-    

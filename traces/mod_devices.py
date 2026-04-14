@@ -521,7 +521,12 @@ class SignalRecovery7265(LockInAmplifier, SCPIDevice):
 
         # Set special options
         if dict_.get("general_mode") == "digital_dmdr":
-            self.measure_intensity = self.measure_intensity_dmdr_digital
+            dt = dict_["lockin_delaytime"] / 1000
+            self.measure_intensity = (
+                lambda *args, dt=dt, **kwargs: self.measure_intensity_dmdr_digital(
+                    *args, **kwargs, delaytime=dt
+                )
+            )
 
         # Create format that is understood by lockin amplifier
         self.timeconstant = float(
